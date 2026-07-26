@@ -1,9 +1,10 @@
-import { useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Vditor from "vditor";
 import "vditor/dist/index.css";
 import "vditor/dist/js/icons/ant.js";
 
 import { vditorAssetBaseUrl } from "../lib/vditor-assets";
+import { EditorSearch, type EditorSearchRequest } from "./EditorSearch";
 
 interface MarkdownEditorProps {
   documentId: string;
@@ -11,6 +12,12 @@ interface MarkdownEditorProps {
   onChange: (value: string) => void;
   onReady: () => void;
 }
+
+const SEARCH_TOOLBAR_ICON = [
+  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor"',
+  ' stroke-width="1.7" stroke-linecap="round">',
+  '<circle cx="11" cy="11" r="6.5" /><path d="m16 16 4.5 4.5" /></svg>',
+].join("");
 
 const TOOLBAR = [
   "undo",
@@ -31,6 +38,7 @@ const TOOLBAR = [
   "table",
   "|",
   "outline",
+  "edit-mode",
   "fullscreen",
 ];
 
@@ -58,6 +66,36 @@ export function MarkdownEditor({
   const onChangeRef = useRef(onChange);
   const onReadyRef = useRef(onReady);
   const initialValueRef = useRef(initialValue);
+  const [searchRequest, setSearchRequest] =
+    useState<EditorSearchRequest | null>(null);
+
+  const openSearch = useCallback((withReplace: boolean) => {
+    const selectionText = window.getSelection()?.toString().trim() ?? "";
+    const prefill =
+      selectionText &&
+      selectionText.length <= 120 &&
+      !selectionText.includes("\n")
+        ? selectionText
+        : null;
+    setSearchRequest((current) => ({
+      id: (current?.id ?? 0) + 1,
+      withReplace,
+      prefill,
+    }));
+  }, []);
+
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.metaKey && !event.ctrlKey && event.code === "KeyF") {
+        event.preventDefault();
+        openSearch(event.altKey);
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [openSearch]);
 
   useEffect(() => {
     onChangeRef.current = onChange;
@@ -75,6 +113,18 @@ export function MarkdownEditor({
 
     markBundledIconSpriteReady();
     let isDisposed = false;
+    const searchToolbarItem: IMenuItem = {
+      name: "inkmark-search",
+      tip: "查找替换 (⌘F)",
+      tipPosition: "s",
+      icon: SEARCH_TOOLBAR_ICON,
+      click: () => {
+        openSearch(false);
+      },
+    };
+    const toolbar = TOOLBAR.flatMap((item): (string | IMenuItem)[] =>
+      item === "outline" ? [searchToolbarItem, item] : [item],
+    );
     const editor = new Vditor(container, {
       after: () => {
         if (isDisposed) {
@@ -124,7 +174,7 @@ export function MarkdownEditor({
       resize: { enable: false },
       tab: "    ",
       theme: "classic",
-      toolbar: TOOLBAR,
+      toolbar,
       toolbarConfig: {
         hide: false,
         pin: true,
@@ -141,7 +191,7 @@ export function MarkdownEditor({
         editor.destroy();
       }
     };
-  }, []);
+  }, [openSearch]);
 
   useEffect(() => {
     const editor = editorRef.current;
@@ -156,5 +206,16 @@ export function MarkdownEditor({
     editor.focus();
   }, [documentId, initialValue]);
 
-  return <div className="markdown-editor" ref={containerRef} />;
+  return (
+    <>
+      <div className="markdown-editor" ref={containerRef} />
+      <EditorSearch
+        containerRef={containerRef}
+        onClose={() => {
+          setSearchRequest(null);
+        }}
+        request={searchRequest}
+      />
+    </>
+  );
 }
