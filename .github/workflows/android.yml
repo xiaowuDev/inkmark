@@ -53,8 +53,15 @@ jobs:
       - name: Build APK
         run: pnpm tauri android build ${{ inputs.release && '--apk' || '--debug --apk' }}
 
+      # 只上传 arm64（2019 年后的手机都是），避免四架构 debug 包动辄 180MB+。
       - uses: actions/upload-artifact@v4
         with:
-          name: inkmark-android-apk
+          name: inkmark-android-arm64
+          path: src-tauri/gen/android/app/build/outputs/apk/**/*arm64*.apk
+          if-no-files-found: error
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: inkmark-android-all-architectures
           path: src-tauri/gen/android/app/build/outputs/apk/**/*.apk
           if-no-files-found: error
