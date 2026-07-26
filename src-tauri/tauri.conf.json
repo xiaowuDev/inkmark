@@ -37,8 +37,8 @@
     "targets": ["app", "dmg"],
     "category": "Productivity",
     "copyright": "Copyright © 2026 Zhuanz",
-    "shortDescription": "A fast, local-first Markdown editor.",
-    "longDescription": "InkMark is a private, local-first Markdown editor with instant rendering, workspace navigation, tabs, and reliable autosave.",
+    "shortDescription": "A fast Markdown editor with optional DeepSeek workspace intelligence.",
+    "longDescription": "InkMark is a local-first Markdown editor with instant rendering, workspace navigation, tabs, reliable autosave, secure DeepSeek chat, and AI-generated knowledge graphs.",
     "macOS": {
       "minimumSystemVersion": "12.0",
       "signingIdentity": "-"

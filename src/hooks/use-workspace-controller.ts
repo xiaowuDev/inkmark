@@ -75,12 +75,6 @@ export function useWorkspaceController() {
     useState<DocumentStats>(EMPTY_STATS);
   const [activeDocumentValue, setActiveDocumentValue] = useState("");
   const [isSidebarVisible, setIsSidebarVisible] = useState(true);
-  const [isDarkMode, setIsDarkMode] = useState(
-    () =>
-      localStorage.getItem("inkmark.theme") === "dark" ||
-      (localStorage.getItem("inkmark.theme") === null &&
-        window.matchMedia("(prefers-color-scheme: dark)").matches),
-  );
 
   const draftsRef = useRef(new Map<string, string>());
   const dirtyTabsRef = useRef(new Set<string>());
@@ -387,14 +381,6 @@ export function useWorkspaceController() {
     [entriesByDirectory, expandedPaths, loadDirectory],
   );
 
-  const toggleTheme = useCallback(() => {
-    setIsDarkMode((current) => {
-      const next = !current;
-      localStorage.setItem("inkmark.theme", next ? "dark" : "light");
-      return next;
-    });
-  }, []);
-
   const toggleSidebar = useCallback(() => {
     setIsSidebarVisible((current) => !current);
   }, []);
@@ -410,10 +396,6 @@ export function useWorkspaceController() {
     const tabId = activeTabIdRef.current;
     return tabId ? (draftsRef.current.get(tabId) ?? "") : null;
   }, []);
-
-  useEffect(() => {
-    document.documentElement.dataset.theme = isDarkMode ? "dark" : "light";
-  }, [isDarkMode]);
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -485,7 +467,6 @@ export function useWorkspaceController() {
     expandedPaths,
     getActiveDocumentValue,
     handleEditorChange,
-    isDarkMode,
     isSidebarVisible,
     loadingPaths,
     openDocument,
@@ -495,7 +476,6 @@ export function useWorkspaceController() {
     tabs,
     toggleDirectory,
     toggleSidebar,
-    toggleTheme,
     workspace,
   };
 }

@@ -1,3 +1,4 @@
+mod ai;
 mod filesystem;
 mod printing;
 
@@ -15,6 +16,12 @@ pub fn run() {
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_dialog::init())
         .invoke_handler(tauri::generate_handler![
+            ai::build_knowledge_graph,
+            ai::chat_with_workspace,
+            ai::delete_deepseek_api_key,
+            ai::get_ai_configuration,
+            ai::save_deepseek_api_key,
+            ai::test_deepseek_connection,
             filesystem::list_directory,
             filesystem::read_document,
             filesystem::write_document,

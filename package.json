@@ -2,7 +2,7 @@
   "name": "inkmark",
   "private": true,
   "version": "0.1.0",
-  "description": "A fast, local-first Markdown editor for macOS.",
+  "description": "A fast Markdown editor with optional DeepSeek workspace intelligence.",
   "type": "module",
   "packageManager": "pnpm@10.33.4",
   "engines": {

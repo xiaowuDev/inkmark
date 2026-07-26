@@ -8,7 +8,6 @@ import { vditorAssetBaseUrl } from "../lib/vditor-assets";
 interface MarkdownEditorProps {
   documentId: string;
   initialValue: string;
-  isDarkMode: boolean;
   onChange: (value: string) => void;
   onReady: () => void;
 }
@@ -49,7 +48,6 @@ function markBundledIconSpriteReady(): void {
 export function MarkdownEditor({
   documentId,
   initialValue,
-  isDarkMode,
   onChange,
   onReady,
 }: MarkdownEditorProps) {
@@ -60,7 +58,6 @@ export function MarkdownEditor({
   const onChangeRef = useRef(onChange);
   const onReadyRef = useRef(onReady);
   const initialValueRef = useRef(initialValue);
-  const initialDarkModeRef = useRef(isDarkMode);
 
   useEffect(() => {
     onChangeRef.current = onChange;
@@ -107,9 +104,7 @@ export function MarkdownEditor({
         hljs: {
           enable: true,
           lineNumber: false,
-          style: initialDarkModeRef.current
-            ? "base16/atelier-cave-dark"
-            : "github",
+          style: "github",
         },
         markdown: {
           codeBlockPreview: true,
@@ -128,7 +123,7 @@ export function MarkdownEditor({
       },
       resize: { enable: false },
       tab: "    ",
-      theme: initialDarkModeRef.current ? "dark" : "classic",
+      theme: "classic",
       toolbar: TOOLBAR,
       toolbarConfig: {
         hide: false,
@@ -160,14 +155,6 @@ export function MarkdownEditor({
     isApplyingValueRef.current = false;
     editor.focus();
   }, [documentId, initialValue]);
-
-  useEffect(() => {
-    editorRef.current?.setTheme(
-      isDarkMode ? "dark" : "classic",
-      isDarkMode ? "dark" : "light",
-      isDarkMode ? "base16/atelier-cave-dark" : "github",
-    );
-  }, [isDarkMode]);
 
   return <div className="markdown-editor" ref={containerRef} />;
 }

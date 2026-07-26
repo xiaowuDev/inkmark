@@ -1,5 +1,6 @@
-import { lazy, Suspense, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useState } from "react";
 
+import type { WorkspaceAiSource } from "./ai/types";
 import { EditorTabs } from "./components/EditorTabs";
 import { FileSidebar } from "./components/FileSidebar";
 import { Icon } from "./components/Icon";
@@ -15,13 +16,70 @@ const MarkdownEditor = lazy(() =>
   })),
 );
 
+const AiPanel = lazy(() =>
+  import("./components/AiPanel").then((module) => ({
+    default: module.AiPanel,
+  })),
+);
+
 function App() {
   const controller = useWorkspaceController();
   const { activeTab } = controller;
+  const activePath = activeTab?.path ?? null;
+  const getActiveDocumentValue = controller.getActiveDocumentValue;
+  const openPath = controller.openPath;
+  const workspaceRootPath = controller.workspace?.rootPath ?? null;
   const automaticUpdate = useAutomaticUpdater({
     canRelaunch: controller.tabs.length === 0,
   });
   const [pdfStatus, setPdfStatus] = useState<string | null>(null);
+  const [isAiPanelVisible, setIsAiPanelVisible] = useState(false);
+  const [hasOpenedAiPanel, setHasOpenedAiPanel] = useState(false);
+
+  const getAiSource = useCallback(
+    (): WorkspaceAiSource => ({
+      rootPath: workspaceRootPath,
+      activePath,
+      activeContent: getActiveDocumentValue(),
+    }),
+    [activePath, getActiveDocumentValue, workspaceRootPath],
+  );
+
+  const toggleAiPanel = useCallback(() => {
+    setHasOpenedAiPanel(true);
+    setIsAiPanelVisible((current) => !current);
+  }, []);
+
+  const openWorkspaceReference = useCallback(
+    (relativePath: string) => {
+      const normalizedPath = relativePath.replaceAll("\\", "/").trim();
+      const segments = normalizedPath.split("/");
+      if (
+        !workspaceRootPath ||
+        !normalizedPath ||
+        normalizedPath.startsWith("/") ||
+        segments.some((segment) => !segment || segment === "..")
+      ) {
+        return;
+      }
+      const name = segments.at(-1) ?? normalizedPath;
+      void openPath(`${workspaceRootPath}/${normalizedPath}`, name);
+    },
+    [openPath, workspaceRootPath],
+  );
+
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.metaKey && event.shiftKey && event.key.toLowerCase() === "i") {
+        event.preventDefault();
+        toggleAiPanel();
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [toggleAiPanel]);
 
   async function exportActiveDocument() {
     const markdown = controller.getActiveDocumentValue();
@@ -42,7 +100,7 @@ function App() {
     <main
       className={`app-shell ${
         controller.isSidebarVisible ? "" : "sidebar-is-hidden"
-      }`}
+      } ${isAiPanelVisible ? "ai-is-visible" : ""}`}
     >
       <header className="titlebar" data-tauri-drag-region>
         <div className="traffic-light-space" data-tauri-drag-region />
@@ -108,13 +166,16 @@ function App() {
           {activeTab?.name ?? "本地 Markdown 工作台"}
         </div>
         <button
-          aria-label={controller.isDarkMode ? "切换浅色模式" : "切换深色模式"}
-          className="icon-button theme-button"
-          onClick={controller.toggleTheme}
-          title={controller.isDarkMode ? "浅色模式" : "深色模式"}
+          aria-label="切换 DeepSeek AI 面板"
+          aria-pressed={isAiPanelVisible}
+          className={`icon-button ai-toggle-button ${
+            isAiPanelVisible ? "is-active" : ""
+          }`}
+          onClick={toggleAiPanel}
+          title="DeepSeek AI (⇧⌘I)"
           type="button"
         >
-          <Icon name={controller.isDarkMode ? "sun" : "moon"} />
+          <Icon name="ai" />
         </button>
       </header>
 
@@ -184,7 +245,6 @@ function App() {
                 <MarkdownEditor
                   documentId={activeTab.id}
                   initialValue={controller.activeDocumentValue}
-                  isDarkMode={controller.isDarkMode}
                   onChange={controller.handleEditorChange}
                   onReady={() => undefined}
                 />
@@ -192,6 +252,31 @@ function App() {
             )}
           </div>
         </section>
+
+        {hasOpenedAiPanel ? (
+          <Suspense
+            fallback={
+              isAiPanelVisible ? (
+                <aside className="ai-panel is-visible ai-panel-loading">
+                  <span className="ink-loader" />
+                  正在准备 DeepSeek…
+                </aside>
+              ) : null
+            }
+          >
+            <AiPanel
+              activeDocumentName={activeTab?.name ?? null}
+              getSource={getAiSource}
+              isVisible={isAiPanelVisible}
+              onClose={() => {
+                setIsAiPanelVisible(false);
+              }}
+              onOpenReference={openWorkspaceReference}
+              workspaceName={controller.workspace?.rootName ?? null}
+              workspaceRootPath={controller.workspace?.rootPath ?? null}
+            />
+          </Suspense>
+        ) : null}
       </div>
 
       <footer className="statusbar">

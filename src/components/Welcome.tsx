@@ -19,7 +19,8 @@ export function Welcome({
       <p className="eyebrow">LOCAL-FIRST MARKDOWN</p>
       <h1>让文字留在你的电脑里。</h1>
       <p className="welcome-copy">
-        InkMark 直接读写普通 Markdown 文件，没有账号、云端副本或专有格式。
+        InkMark 直接读写普通 Markdown 文件；写作保持本地，DeepSeek
+        助手只在你启用时读取工作区。
       </p>
       <div className="welcome-actions">
         <button
