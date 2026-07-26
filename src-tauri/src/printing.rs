@@ -92,9 +92,18 @@ pub fn print_document(webview: &tauri::WebviewWindow) -> Result<(), String> {
     macos::run(webview)
 }
 
-#[cfg(not(target_os = "macos"))]
+#[cfg(all(
+    not(target_os = "macos"),
+    not(any(target_os = "android", target_os = "ios"))
+))]
 pub fn print_document(webview: &tauri::WebviewWindow) -> Result<(), String> {
     webview
         .print()
         .map_err(|error| format!("无法打开系统打印面板：{error}"))
+}
+
+/// 移动端 WebView 没有暴露打印接口，PDF 导出暂不支持。
+#[cfg(any(target_os = "android", target_os = "ios"))]
+pub fn print_document(_webview: &tauri::WebviewWindow) -> Result<(), String> {
+    Err("当前平台暂不支持导出 PDF。".to_string())
 }

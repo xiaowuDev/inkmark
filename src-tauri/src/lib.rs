@@ -31,7 +31,6 @@ async fn pick_android_workspace() -> Result<Option<()>, String> {
 pub fn run() {
     let builder = tauri::Builder::default()
         .plugin(tauri_plugin_process::init())
-        .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_dialog::init())
         .manage(ai::AiCancelRegistry::default())
         .invoke_handler(tauri::generate_handler![
@@ -52,6 +51,10 @@ pub fn run() {
 
     #[cfg(target_os = "android")]
     let builder = builder.plugin(tauri_plugin_android_fs::init());
+
+    // updater 只在桌面端可用。
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
+    let builder = builder.plugin(tauri_plugin_updater::Builder::new().build());
 
     builder
         .run(tauri::generate_context!())

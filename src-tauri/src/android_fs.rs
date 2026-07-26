@@ -112,7 +112,6 @@ pub async fn list_directory(app: AppHandle, path: String) -> Result<Vec<Director
                     size_bytes: Some(len),
                 }
             }
-            _ => continue,
         };
         listed.push(listed_entry);
     }
