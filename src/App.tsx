@@ -1,11 +1,26 @@
-import { lazy, Suspense, useCallback, useEffect, useState } from "react";
+import {
+  lazy,
+  Suspense,
+  useCallback,
+  useEffect,
+  useState,
+  type CSSProperties,
+} from "react";
 
 import type { WorkspaceAiSource } from "./ai/types";
 import { EditorTabs } from "./components/EditorTabs";
 import { FileSidebar } from "./components/FileSidebar";
 import { Icon } from "./components/Icon";
+import { PaneResizer } from "./components/PaneResizer";
 import { Welcome } from "./components/Welcome";
 import { useAutomaticUpdater } from "./hooks/use-automatic-updater";
+import {
+  AI_PANEL_MAX_WIDTH,
+  AI_PANEL_MIN_WIDTH,
+  SIDEBAR_MAX_WIDTH,
+  SIDEBAR_MIN_WIDTH,
+  usePaneWidths,
+} from "./hooks/use-pane-widths";
 import { useWorkspaceController } from "./hooks/use-workspace-controller";
 import { printMarkdownAsPdf } from "./lib/pdf-export";
 import "./styles/app.css";
@@ -32,6 +47,7 @@ function App() {
   const automaticUpdate = useAutomaticUpdater({
     canRelaunch: controller.tabs.length === 0,
   });
+  const paneWidths = usePaneWidths();
   const [pdfStatus, setPdfStatus] = useState<string | null>(null);
   const [isAiPanelVisible, setIsAiPanelVisible] = useState(false);
   const [hasOpenedAiPanel, setHasOpenedAiPanel] = useState(false);
@@ -101,6 +117,12 @@ function App() {
       className={`app-shell ${
         controller.isSidebarVisible ? "" : "sidebar-is-hidden"
       } ${isAiPanelVisible ? "ai-is-visible" : ""}`}
+      style={
+        {
+          "--sidebar-width": `${String(paneWidths.sidebarWidth)}px`,
+          "--ai-panel-width": `${String(paneWidths.aiPanelWidth)}px`,
+        } as CSSProperties
+      }
     >
       <header className="titlebar" data-tauri-drag-region>
         <div className="traffic-light-space" data-tauri-drag-region />
@@ -196,6 +218,18 @@ function App() {
           workspace={controller.workspace}
         />
 
+        {controller.isSidebarVisible ? (
+          <PaneResizer
+            edge="left"
+            label="侧边栏宽度"
+            max={SIDEBAR_MAX_WIDTH}
+            min={SIDEBAR_MIN_WIDTH}
+            onChange={paneWidths.setSidebarWidth}
+            onReset={paneWidths.resetSidebarWidth}
+            width={paneWidths.sidebarWidth}
+          />
+        ) : null}
+
         <section
           className={`editor-workspace ${
             controller.tabs.length === 0 ? "is-empty" : ""
@@ -252,6 +286,18 @@ function App() {
             )}
           </div>
         </section>
+
+        {isAiPanelVisible ? (
+          <PaneResizer
+            edge="right"
+            label="AI 面板宽度"
+            max={AI_PANEL_MAX_WIDTH}
+            min={AI_PANEL_MIN_WIDTH}
+            onChange={paneWidths.setAiPanelWidth}
+            onReset={paneWidths.resetAiPanelWidth}
+            width={paneWidths.aiPanelWidth}
+          />
+        ) : null}
 
         {hasOpenedAiPanel ? (
           <Suspense

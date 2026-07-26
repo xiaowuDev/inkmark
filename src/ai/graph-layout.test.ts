@@ -38,7 +38,7 @@ const graph: KnowledgeGraph = {
     contextBytes: 10,
   },
   generatedAtMs: 0,
-  model: "deepseek-v4-flash",
+  model: "deepseek-v4-pro",
 };
 
 describe("knowledge graph layout", () => {

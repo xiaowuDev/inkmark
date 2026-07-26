@@ -18,7 +18,7 @@ use tauri::{AppHandle, Emitter};
 use walkdir::{DirEntry, WalkDir};
 
 const DEEPSEEK_API_URL: &str = "https://api.deepseek.com/chat/completions";
-const DEEPSEEK_MODEL: &str = "deepseek-v4-flash";
+const DEEPSEEK_MODEL: &str = "deepseek-v4-pro";
 const KEYCHAIN_SERVICE: &str = "com.zhuanz.inkmark.deepseek";
 const KEYCHAIN_ACCOUNT: &str = "api-key";
 const MAX_CHAT_MESSAGES: usize = 24;
