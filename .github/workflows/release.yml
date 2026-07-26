@@ -1,0 +1,73 @@
+name: Publish InkMark
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+concurrency:
+  group: inkmark-release
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: pnpm/action-setup@v4
+        with:
+          run_install: false
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin
+          components: clippy,rustfmt
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Assign monotonic release version
+        env:
+          APP_VERSION: 0.1.${{ github.run_number }}
+        run: pnpm version:set
+
+      - name: Run quality gates
+        run: pnpm check
+
+      - name: Check native layer
+        working-directory: src-tauri
+        run: |
+          cargo fmt --check
+          cargo test
+          cargo clippy --all-targets -- -D warnings
+
+      - name: Build and publish signed update
+        uses: tauri-apps/tauri-action@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ""
+        with:
+          args: --target aarch64-apple-darwin --bundles app,dmg
+          tagName: v__VERSION__
+          releaseName: InkMark v__VERSION__
+          releaseBody: |
+            自动构建自提交 ${{ github.sha }}。
+
+            InkMark 会在下次启动时自动检查、验证并安装此版本。
+          releaseDraft: false
+          prerelease: false

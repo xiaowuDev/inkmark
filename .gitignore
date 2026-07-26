@@ -1,0 +1,13 @@
+node_modules/
+dist/
+output/
+tmp/
+src-tauri/target/
+src-tauri/gen/
+.DS_Store
+*.log
+*.tsbuildinfo
+*.inkmark-version
+.env
+.env.*
+!.env.example

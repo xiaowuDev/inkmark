@@ -1,0 +1,55 @@
+{
+  "name": "inkmark",
+  "private": true,
+  "version": "0.1.0",
+  "description": "A fast, local-first Markdown editor for macOS.",
+  "type": "module",
+  "packageManager": "pnpm@10.33.4",
+  "engines": {
+    "node": ">=22.0.0",
+    "pnpm": ">=10.0.0"
+  },
+  "scripts": {
+    "dev": "vite",
+    "build": "pnpm typecheck && vite build",
+    "build:signed": "node scripts/build-signed.mjs",
+    "check": "pnpm format:check && pnpm lint && pnpm typecheck && pnpm test:run && pnpm build",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "lint": "eslint . --max-warnings=0",
+    "preview": "vite preview",
+    "tauri": "tauri",
+    "tauri:build": "tauri build --bundles app,dmg",
+    "test": "vitest",
+    "test:run": "vitest run",
+    "typecheck": "tsc --noEmit --pretty false && tsc -p tsconfig.node.json --noEmit --pretty false",
+    "version:set": "node scripts/set-version.mjs"
+  },
+  "dependencies": {
+    "@tauri-apps/api": "2.11.1",
+    "@tauri-apps/plugin-dialog": "2.7.2",
+    "@tauri-apps/plugin-process": "~2.3.1",
+    "@tauri-apps/plugin-updater": "~2.10.1",
+    "react": "19.2.8",
+    "react-dom": "19.2.8",
+    "vditor": "3.11.2"
+  },
+  "devDependencies": {
+    "@eslint/js": "10.0.1",
+    "@tauri-apps/cli": "2.11.4",
+    "@types/node": "26.1.1",
+    "@types/react": "19.2.17",
+    "@types/react-dom": "19.2.3",
+    "@vitejs/plugin-react": "6.0.4",
+    "eslint": "10.8.0",
+    "eslint-plugin-react-hooks": "7.1.1",
+    "eslint-plugin-react-refresh": "0.5.3",
+    "globals": "17.7.0",
+    "prettier": "3.9.6",
+    "typescript": "6.0.3",
+    "typescript-eslint": "8.65.0",
+    "vite": "8.1.5",
+    "vite-plugin-static-copy": "4.1.1",
+    "vitest": "4.1.10"
+  }
+}
