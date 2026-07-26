@@ -203,6 +203,23 @@ button:focus-visible {
   grid-template-columns: minmax(0, 1fr) var(--ai-panel-effective);
 }
 
+.drawer-scrim {
+  position: absolute;
+  z-index: 29;
+  display: none;
+  inset: 0;
+  border: 0;
+  padding: 0;
+  background: rgba(31, 35, 40, 0.32);
+  animation: scrim-in 200ms ease both;
+}
+
+@keyframes scrim-in {
+  from {
+    opacity: 0;
+  }
+}
+
 .pane-resizer {
   position: absolute;
   z-index: 20;
@@ -2491,6 +2508,188 @@ body.is-exporting-pdf .print-document {
 
   .markdown-editor .vditor-reset {
     padding-inline: 38px !important;
+  }
+}
+
+/*
+ * 手机与平板竖屏：侧边栏和 AI 面板改为覆盖式抽屉，三栏退化成单栏，
+ * 触摸目标放大到 44px，并让出系统状态栏/手势条的安全区。
+ */
+@media (max-width: 720px), (pointer: coarse) and (max-width: 900px) {
+  .app-shell {
+    grid-template-rows: auto minmax(0, 1fr) auto;
+    padding-top: env(safe-area-inset-top);
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+
+  .titlebar {
+    grid-template-columns: auto auto minmax(0, 1fr) auto;
+    min-height: 48px;
+    padding: 0 6px;
+  }
+
+  .traffic-light-space,
+  .titlebar-document {
+    display: none;
+  }
+
+  .toolbar {
+    gap: 0;
+  }
+
+  .icon-button {
+    width: 44px;
+    height: 44px;
+  }
+
+  .icon-button svg {
+    width: 19px;
+    height: 19px;
+  }
+
+  /* 单栏：编辑区始终占满，侧栏与 AI 面板浮在其上。 */
+  .workspace-layout,
+  .ai-is-visible .workspace-layout,
+  .sidebar-is-hidden .workspace-layout,
+  .sidebar-is-hidden.ai-is-visible .workspace-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .file-sidebar,
+  .ai-panel.is-visible {
+    position: absolute;
+    z-index: 30;
+    top: 0;
+    bottom: 0;
+    box-shadow: -6px 0 24px rgba(31, 35, 40, 0.18);
+  }
+
+  .drawer-scrim {
+    display: block;
+  }
+
+  .file-sidebar {
+    left: 0;
+    width: min(84vw, 330px);
+    animation: drawer-in-left 200ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  }
+
+  .ai-panel.is-visible {
+    right: 0;
+    left: 0;
+    width: auto;
+    animation: drawer-in-right 200ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  }
+
+  /* 抽屉模式下拖拽手柄没有意义，边缘也容易误触。 */
+  .pane-resizer {
+    display: none;
+  }
+
+  .file-tree-row,
+  .ai-panel-tabs button,
+  .editor-tab {
+    min-height: 44px;
+  }
+
+  .editor-tabs {
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+
+  .editor-tabs::-webkit-scrollbar {
+    display: none;
+  }
+
+  .markdown-editor .vditor-toolbar {
+    padding-inline: 6px;
+    overflow-x: auto;
+    scrollbar-width: none;
+    flex-wrap: nowrap;
+  }
+
+  .markdown-editor .vditor-toolbar::-webkit-scrollbar {
+    display: none;
+  }
+
+  .markdown-editor .vditor-toolbar__item button {
+    width: 40px;
+    height: 40px;
+  }
+
+  .markdown-editor .vditor-reset {
+    padding: 24px 18px 200px !important;
+    font-size: 17px;
+  }
+
+  /* 手机上正文宽度由屏幕决定，不再留版心边距。 */
+  .editor-search {
+    top: 8px;
+    right: 8px;
+    left: 8px;
+  }
+
+  .editor-search-row input {
+    width: 100%;
+    height: 34px;
+    font-size: 16px;
+  }
+
+  .editor-search-row button {
+    width: 34px;
+    height: 34px;
+  }
+
+  .selection-actions {
+    max-width: calc(100vw - 24px);
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+
+  .selection-actions button {
+    padding: 8px 12px;
+    font-size: 13px;
+  }
+
+  .ai-composer textarea,
+  .ai-mention-picker button {
+    /* 小于 16px 时 WebView 会在聚焦时自动放大页面。 */
+    font-size: 16px;
+  }
+
+  .ai-message-content {
+    font-size: 14px;
+  }
+
+  .ai-message-actions {
+    opacity: 1;
+  }
+
+  .ai-message-actions button {
+    min-height: 32px;
+    font-size: 10.5px;
+  }
+
+  .statusbar {
+    gap: 8px;
+    padding: 0 10px;
+    font-size: 8.5px;
+  }
+
+  .statusbar > span:first-child {
+    display: none;
+  }
+}
+
+@keyframes drawer-in-left {
+  from {
+    transform: translateX(-100%);
+  }
+}
+
+@keyframes drawer-in-right {
+  from {
+    transform: translateX(100%);
   }
 }
 

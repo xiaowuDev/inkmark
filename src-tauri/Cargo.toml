@@ -21,7 +21,6 @@ tauri-build = { version = "2", features = [] }
 [dependencies]
 eventsource-stream = "0.2"
 futures-util = "0.3"
-keyring = { version = "3.6", default-features = false, features = ["apple-native"] }
 reqwest = { version = "0.13", default-features = false, features = ["json", "rustls-no-provider", "stream"] }
 tauri = { version = "2", features = [] }
 tauri-plugin-dialog = "2"
@@ -33,6 +32,8 @@ walkdir = "2"
 
 [target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
 tauri-plugin-updater = "2"
+# keyring 不支持 Android/iOS；移动端改用应用私有目录存放密钥。
+keyring = { version = "3.6", default-features = false, features = ["apple-native"] }
 
 [target.'cfg(target_os = "macos")'.dependencies]
 objc2 = "=0.6.4"

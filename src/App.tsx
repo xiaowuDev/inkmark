@@ -19,6 +19,7 @@ import { PaneResizer } from "./components/PaneResizer";
 
 import { Welcome } from "./components/Welcome";
 import { useAutomaticUpdater } from "./hooks/use-automatic-updater";
+import { useCompactLayout } from "./hooks/use-compact-layout";
 import {
   AI_PANEL_MAX_WIDTH,
   AI_PANEL_MIN_WIDTH,
@@ -53,6 +54,7 @@ function App() {
     canRelaunch: controller.tabs.length === 0,
   });
   const paneWidths = usePaneWidths();
+  const isCompact = useCompactLayout();
   const [pdfStatus, setPdfStatus] = useState<string | null>(null);
   const [isAiPanelVisible, setIsAiPanelVisible] = useState(false);
   const [hasOpenedAiPanel, setHasOpenedAiPanel] = useState(false);
@@ -249,6 +251,9 @@ function App() {
           loadingPaths={controller.loadingPaths}
           onOpenDocument={(entry) => {
             void controller.openPath(entry.path, entry.name);
+            if (isCompact) {
+              controller.toggleSidebar();
+            }
           }}
           onOpenWorkspace={() => {
             void controller.openWorkspace();
@@ -256,6 +261,21 @@ function App() {
           onToggleDirectory={controller.toggleDirectory}
           workspace={controller.workspace}
         />
+
+        {isCompact && (controller.isSidebarVisible || isAiPanelVisible) ? (
+          <button
+            aria-label="关闭面板"
+            className="drawer-scrim"
+            onClick={() => {
+              if (isAiPanelVisible) {
+                setIsAiPanelVisible(false);
+              } else {
+                controller.toggleSidebar();
+              }
+            }}
+            type="button"
+          />
+        ) : null}
 
         {controller.isSidebarVisible ? (
           <PaneResizer

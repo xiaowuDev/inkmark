@@ -1,0 +1,60 @@
+name: Build Android APK
+
+# 手动触发：Android 端仍在适配中，不参与 main 分支的自动发布。
+on:
+  workflow_dispatch:
+    inputs:
+      release:
+        description: "构建 release APK（否则构建 debug）"
+        type: boolean
+        default: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: pnpm/action-setup@v4
+        with:
+          run_install: false
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - uses: android-actions/setup-android@v3
+
+      - name: Install Android NDK
+        run: |
+          sdkmanager --install "ndk;27.2.12479018"
+          echo "NDK_HOME=$ANDROID_HOME/ndk/27.2.12479018" >> "$GITHUB_ENV"
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android,armv7-linux-androideabi,i686-linux-android,x86_64-linux-android
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Initialize the Android project
+        run: pnpm tauri android init
+
+      - name: Build APK
+        run: pnpm tauri android build ${{ inputs.release && '--apk' || '--debug --apk' }}
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: inkmark-android-apk
+          path: src-tauri/gen/android/app/build/outputs/apk/**/*.apk
+          if-no-files-found: error

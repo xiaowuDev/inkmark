@@ -1,6 +1,5 @@
 use eventsource_stream::Eventsource;
 use futures_util::StreamExt;
-use keyring::{Entry, Error as KeyringError};
 use reqwest::{Client, StatusCode};
 use serde::{Deserialize, Serialize};
 use std::{
@@ -400,30 +399,109 @@ struct RawKnowledgeEdge {
     weight: Option<f32>,
 }
 
-fn keychain_entry() -> Result<Entry, String> {
-    Entry::new(KEYCHAIN_SERVICE, KEYCHAIN_ACCOUNT)
-        .map_err(|error| format!("无法访问系统钥匙串：{error}"))
+/// 桌面端把密钥交给系统钥匙串；移动端 keyring 不可用，改用应用私有目录
+/// （Android/iOS 的沙箱保证其他应用读不到）。
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+mod secret_store {
+    use super::{KEYCHAIN_ACCOUNT, KEYCHAIN_SERVICE};
+    use keyring::{Entry, Error as KeyringError};
+
+    fn entry() -> Result<Entry, String> {
+        Entry::new(KEYCHAIN_SERVICE, KEYCHAIN_ACCOUNT)
+            .map_err(|error| format!("无法访问系统钥匙串：{error}"))
+    }
+
+    pub fn read() -> Result<Option<String>, String> {
+        match entry()?.get_password() {
+            Ok(api_key) => Ok(Some(api_key)),
+            Err(KeyringError::NoEntry) => Ok(None),
+            Err(error) => Err(format!("读取 DeepSeek 密钥失败：{error}")),
+        }
+    }
+
+    pub fn write(api_key: &str) -> Result<(), String> {
+        entry()?
+            .set_password(api_key)
+            .map_err(|error| format!("保存 DeepSeek 密钥失败：{error}"))
+    }
+
+    pub fn remove() -> Result<(), String> {
+        match entry()?.delete_credential() {
+            Ok(()) | Err(KeyringError::NoEntry) => Ok(()),
+            Err(error) => Err(format!("删除 DeepSeek 密钥失败：{error}")),
+        }
+    }
 }
 
-fn read_api_key() -> Result<Option<String>, String> {
-    match keychain_entry()?.get_password() {
-        Ok(api_key) => Ok(Some(api_key)),
-        Err(KeyringError::NoEntry) => Ok(None),
-        Err(error) => Err(format!("读取 DeepSeek 密钥失败：{error}")),
+#[cfg(any(target_os = "android", target_os = "ios"))]
+mod secret_store {
+    use std::{
+        fs,
+        path::PathBuf,
+        sync::{OnceLock, RwLock},
+    };
+
+    static STORE_PATH: OnceLock<RwLock<Option<PathBuf>>> = OnceLock::new();
+
+    fn slot() -> &'static RwLock<Option<PathBuf>> {
+        STORE_PATH.get_or_init(|| RwLock::new(None))
     }
+
+    /// 由 setup 在启动时注入应用私有目录。
+    pub fn set_directory(directory: PathBuf) {
+        if let Ok(mut guard) = slot().write() {
+            *guard = Some(directory.join("deepseek-api-key"));
+        }
+    }
+
+    fn path() -> Result<PathBuf, String> {
+        slot()
+            .read()
+            .ok()
+            .and_then(|guard| guard.clone())
+            .ok_or_else(|| "密钥存储尚未初始化。".to_string())
+    }
+
+    pub fn read() -> Result<Option<String>, String> {
+        let path = path()?;
+        match fs::read_to_string(&path) {
+            Ok(api_key) => Ok(Some(api_key.trim().to_string()).filter(|key| !key.is_empty())),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(None),
+            Err(error) => Err(format!("读取 DeepSeek 密钥失败：{error}")),
+        }
+    }
+
+    pub fn write(api_key: &str) -> Result<(), String> {
+        let path = path()?;
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent)
+                .map_err(|error| format!("创建密钥目录失败：{error}"))?;
+        }
+        fs::write(&path, api_key).map_err(|error| format!("保存 DeepSeek 密钥失败：{error}"))
+    }
+
+    pub fn remove() -> Result<(), String> {
+        match fs::remove_file(path()?) {
+            Ok(()) => Ok(()),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+            Err(error) => Err(format!("删除 DeepSeek 密钥失败：{error}")),
+        }
+    }
+}
+
+#[cfg(any(target_os = "android", target_os = "ios"))]
+pub use secret_store::set_directory as set_secret_directory;
+
+fn read_api_key() -> Result<Option<String>, String> {
+    secret_store::read()
 }
 
 fn write_api_key(api_key: &str) -> Result<(), String> {
-    keychain_entry()?
-        .set_password(api_key)
-        .map_err(|error| format!("保存 DeepSeek 密钥失败：{error}"))
+    secret_store::write(api_key)
 }
 
 fn remove_api_key() -> Result<(), String> {
-    match keychain_entry()?.delete_credential() {
-        Ok(()) | Err(KeyringError::NoEntry) => Ok(()),
-        Err(error) => Err(format!("删除 DeepSeek 密钥失败：{error}")),
-    }
+    secret_store::remove()
 }
 
 async fn required_api_key() -> Result<String, String> {
