@@ -152,6 +152,27 @@ pub struct WorkspaceEntry {
     is_directory: bool,
 }
 
+impl WorkspaceEntry {
+    #[cfg_attr(not(target_os = "android"), allow(dead_code))]
+    pub fn new(path: String, name: String, is_directory: bool) -> Self {
+        Self {
+            path,
+            name,
+            is_directory,
+        }
+    }
+
+    #[cfg_attr(not(target_os = "android"), allow(dead_code))]
+    pub fn path(&self) -> &str {
+        &self.path
+    }
+
+    #[cfg_attr(not(target_os = "android"), allow(dead_code))]
+    pub fn is_directory(&self) -> bool {
+        self.is_directory
+    }
+}
+
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct KnowledgeGraphRequest {
@@ -237,7 +258,7 @@ struct WorkspaceSnapshot {
 }
 
 /// 判断相对路径是否落在任一 `@` 圈定的范围内（自身或其子路径）。
-fn is_within_scope(relative_path: &str, scope_paths: &[String]) -> bool {
+pub fn is_within_scope(relative_path: &str, scope_paths: &[String]) -> bool {
     scope_paths.iter().any(|scope| {
         let scope = scope.trim_end_matches('/');
         scope.is_empty()
@@ -631,6 +652,8 @@ struct SnapshotRequest<'a> {
     active_content: Option<&'a str>,
     scope_paths: &'a [String],
     selection: Option<&'a str>,
+    /// Android 上文件由 SAF 预先读好，跳过 walkdir。
+    preloaded: Vec<WorkspaceDocument>,
 }
 
 fn collect_workspace_snapshot(
@@ -653,7 +676,9 @@ fn collect_scoped_snapshot(request: SnapshotRequest<'_>) -> Result<WorkspaceSnap
         active_content,
         scope_paths,
         selection,
+        preloaded,
     } = request;
+    let preloaded_count = preloaded.len();
     // Android 的工作区是 SAF content URI，不能用 std::fs 遍历；
     // 此时降级为「只带当前文稿」，AI 仍然可用。
     let root = root_path
@@ -701,7 +726,7 @@ fn collect_scoped_snapshot(request: SnapshotRequest<'_>) -> Result<WorkspaceSnap
         candidates.sort_unstable_by_key(|path| relative_display_path(root, path));
     }
 
-    let discovered_file_count = candidates.len() + omitted_file_count;
+    let discovered_file_count = candidates.len() + omitted_file_count + preloaded_count;
     let per_file_budget = if candidates.is_empty() {
         MAX_FILE_BYTES
     } else {
@@ -710,9 +735,11 @@ fn collect_scoped_snapshot(request: SnapshotRequest<'_>) -> Result<WorkspaceSnap
     let active_relative_path = active_content.map(|_| {
         active_relative_path(root.as_deref(), active_path.filter(|path| !path.is_empty()))
     });
-    let mut documents =
-        Vec::with_capacity(candidates.len() + usize::from(active_content.is_some()));
-    let mut active_was_replaced = false;
+    let mut documents = preloaded;
+    documents.reserve(candidates.len() + usize::from(active_content.is_some()));
+    let mut active_was_replaced = documents
+        .iter()
+        .any(|document| Some(document.relative_path.as_str()) == active_relative_path.as_deref());
 
     for path in candidates {
         let relative_path = relative_display_path(root.as_deref().expect("root exists"), &path);
@@ -762,7 +789,7 @@ fn collect_scoped_snapshot(request: SnapshotRequest<'_>) -> Result<WorkspaceSnap
         .map(|selection| truncate_utf8(selection, MAX_FILE_BYTES).0);
 
     if documents.is_empty() && selection.is_none() {
-        return Err(if scope_paths.is_empty() {
+        return Err(if scope_paths.is_empty() && preloaded_count == 0 {
             "当前没有可供 AI 阅读的文本，请先打开文稿或选择工作区。".to_string()
         } else {
             "选定的范围内没有可读文本，请换一个文件或文件夹。".to_string()
@@ -779,6 +806,16 @@ fn collect_scoped_snapshot(request: SnapshotRequest<'_>) -> Result<WorkspaceSnap
     })
 }
 
+#[cfg(target_os = "android")]
+#[tauri::command]
+pub async fn list_workspace_entries(
+    app: AppHandle,
+    root_path: String,
+) -> Result<Vec<WorkspaceEntry>, String> {
+    crate::android_fs::list_entries(app, root_path, MAX_LISTED_ENTRIES).await
+}
+
+#[cfg(not(target_os = "android"))]
 #[tauri::command]
 pub async fn list_workspace_entries(root_path: String) -> Result<Vec<WorkspaceEntry>, String> {
     tauri::async_runtime::spawn_blocking(move || {
@@ -1153,6 +1190,46 @@ pub async fn test_deepseek_connection() -> Result<(), String> {
         .map(|_| ())
 }
 
+/// SAF 工作区（content URI）没有可遍历的绝对路径，改由插件预先读好文件。
+#[cfg(target_os = "android")]
+async fn preloaded_documents(
+    app: &AppHandle,
+    root_path: Option<&str>,
+    scope_paths: &[String],
+) -> Option<Vec<WorkspaceDocument>> {
+    let root_path = root_path.filter(|path| path.starts_with('{'))?;
+    let documents = crate::android_fs::collect_documents(
+        app.clone(),
+        root_path.to_string(),
+        scope_paths.to_vec(),
+        MAX_WORKSPACE_FILES,
+        MAX_FILE_BYTES,
+    )
+    .await
+    .ok()?;
+
+    Some(
+        documents
+            .into_iter()
+            .map(|document| WorkspaceDocument {
+                is_truncated: document.content.len() < document.size_bytes as usize,
+                relative_path: document.relative_path,
+                content: document.content,
+                size_bytes: document.size_bytes,
+            })
+            .collect(),
+    )
+}
+
+#[cfg(not(target_os = "android"))]
+async fn preloaded_documents(
+    _app: &AppHandle,
+    _root_path: Option<&str>,
+    _scope_paths: &[String],
+) -> Option<Vec<WorkspaceDocument>> {
+    None
+}
+
 async fn run_workspace_chat(
     app: &AppHandle,
     request: WorkspaceChatRequest,
@@ -1160,12 +1237,16 @@ async fn run_workspace_chat(
     cancel_flag: &AtomicBool,
 ) -> Result<ChatReceipt, String> {
     let api_key = required_api_key().await?;
+    let preloaded = preloaded_documents(app, request.root_path.as_deref(), &request.scope_paths)
+        .await
+        .unwrap_or_default();
     let snapshot = collect_scoped_snapshot(SnapshotRequest {
         root_path: request.root_path.as_deref(),
         active_path: request.active_path.as_deref(),
         active_content: request.active_content.as_deref(),
         scope_paths: &request.scope_paths,
         selection: request.selection.as_deref(),
+        preloaded,
     })?;
     let chat_messages = validate_chat_messages(request.messages)?;
     let mut messages = Vec::with_capacity(chat_messages.len() + 2);
@@ -1398,6 +1479,7 @@ mod tests {
             active_content: Some("unsaved draft"),
             scope_paths: &["notes".to_string()],
             selection: None,
+            preloaded: Vec::new(),
         })
         .expect("collect snapshot");
 

@@ -158,3 +158,153 @@ pub async fn write_document(
         path,
     ))
 }
+
+/// SAF 下收集到的一篇文稿，`relative_path` 是相对工作区根的显示路径。
+pub struct SafDocument {
+    pub relative_path: String,
+    pub content: String,
+    pub size_bytes: u64,
+}
+
+const TEXT_EXTENSIONS: &[&str] = &[
+    "md", "markdown", "mdown", "mkd", "txt", "json", "yaml", "yml", "toml", "csv", "rs", "ts",
+    "tsx", "js", "jsx", "py", "java", "kt", "go", "sql", "sh", "html", "css", "xml", "ini", "conf",
+];
+
+fn is_indexable(name: &str) -> bool {
+    name.rsplit_once('.').is_some_and(|(_, extension)| {
+        TEXT_EXTENSIONS
+            .iter()
+            .any(|allowed| extension.eq_ignore_ascii_case(allowed))
+    })
+}
+
+/// 递归遍历 SAF 目录树。Android 上没有 `WalkDir`，只能靠 `read_dir` 逐层展开。
+pub async fn collect_documents(
+    app: AppHandle,
+    root_path: String,
+    scope_paths: Vec<String>,
+    max_files: usize,
+    per_file_bytes: usize,
+) -> Result<Vec<SafDocument>, String> {
+    let android_fs = app.android_fs_async();
+    let mut pending = vec![(parse_uri(&root_path)?, String::new())];
+    let mut documents = Vec::new();
+
+    while let Some((uri, prefix)) = pending.pop() {
+        if documents.len() >= max_files {
+            break;
+        }
+        let Ok(entries) = android_fs.read_dir(&uri).await else {
+            continue;
+        };
+
+        for entry in entries {
+            match entry {
+                Entry::Dir { uri, name, .. } => {
+                    if name.starts_with('.') {
+                        continue;
+                    }
+                    let child = if prefix.is_empty() {
+                        name
+                    } else {
+                        format!("{prefix}/{name}")
+                    };
+                    // 目录本身在范围外、且不是范围的祖先时可以整棵跳过。
+                    if !scope_paths.is_empty()
+                        && !crate::ai::is_within_scope(&child, &scope_paths)
+                        && !scope_paths
+                            .iter()
+                            .any(|scope| scope.starts_with(&format!("{child}/")))
+                    {
+                        continue;
+                    }
+                    pending.push((uri, child));
+                }
+                Entry::File { uri, name, len, .. } => {
+                    if name.starts_with('.') || !is_indexable(&name) {
+                        continue;
+                    }
+                    let relative_path = if prefix.is_empty() {
+                        name
+                    } else {
+                        format!("{prefix}/{name}")
+                    };
+                    if !scope_paths.is_empty()
+                        && !crate::ai::is_within_scope(&relative_path, &scope_paths)
+                    {
+                        continue;
+                    }
+                    if documents.len() >= max_files {
+                        break;
+                    }
+                    let Ok(content) = android_fs.read_to_string(&uri).await else {
+                        continue;
+                    };
+                    let mut end = content.len().min(per_file_bytes);
+                    while end > 0 && !content.is_char_boundary(end) {
+                        end -= 1;
+                    }
+                    documents.push(SafDocument {
+                        relative_path,
+                        content: content[..end].to_string(),
+                        size_bytes: len,
+                    });
+                }
+            }
+        }
+    }
+
+    documents.sort_by(|left, right| left.relative_path.cmp(&right.relative_path));
+    Ok(documents)
+}
+
+/// `@` 提及用的工作区索引。
+pub async fn list_entries(
+    app: AppHandle,
+    root_path: String,
+    max_entries: usize,
+) -> Result<Vec<crate::ai::WorkspaceEntry>, String> {
+    let android_fs = app.android_fs_async();
+    let mut pending = vec![(parse_uri(&root_path)?, String::new())];
+    let mut listed = Vec::new();
+
+    while let Some((uri, prefix)) = pending.pop() {
+        if listed.len() >= max_entries {
+            break;
+        }
+        let Ok(entries) = android_fs.read_dir(&uri).await else {
+            continue;
+        };
+
+        for entry in entries {
+            if listed.len() >= max_entries {
+                break;
+            }
+            let (child_uri, name, is_directory) = match entry {
+                Entry::Dir { uri, name, .. } => (Some(uri), name, true),
+                Entry::File { name, .. } => (None, name, false),
+            };
+            if name.starts_with('.') || (!is_directory && !is_indexable(&name)) {
+                continue;
+            }
+            let path = if prefix.is_empty() {
+                name.clone()
+            } else {
+                format!("{prefix}/{name}")
+            };
+            if let Some(child_uri) = child_uri {
+                pending.push((child_uri, path.clone()));
+            }
+            listed.push(crate::ai::WorkspaceEntry::new(path, name, is_directory));
+        }
+    }
+
+    listed.sort_by(|left, right| {
+        right
+            .is_directory()
+            .cmp(&left.is_directory())
+            .then_with(|| left.path().cmp(right.path()))
+    });
+    Ok(listed)
+}
