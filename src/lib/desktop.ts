@@ -8,14 +8,38 @@ const MARKDOWN_FILTER = {
   extensions: ["md", "markdown", "mdown", "mkd", "txt"],
 };
 
-export async function chooseWorkspaceDirectory(): Promise<string | null> {
+interface PickedWorkspace {
+  rootPath: string;
+  rootName: string;
+}
+
+/** Android 的沙箱没有文件夹选择器，改由 SAF 授权一棵目录树。 */
+function isAndroid(): boolean {
+  return /android/i.test(navigator.userAgent);
+}
+
+export async function chooseWorkspaceDirectory(): Promise<{
+  rootPath: string;
+  rootName: string | null;
+} | null> {
+  if (isAndroid()) {
+    const picked = await invoke<PickedWorkspace | null>(
+      "pick_android_workspace",
+    );
+    return picked
+      ? { rootPath: picked.rootPath, rootName: picked.rootName }
+      : null;
+  }
+
   const selected = await open({
     directory: true,
     multiple: false,
     title: "选择 Markdown 工作区",
   });
 
-  return typeof selected === "string" ? selected : null;
+  return typeof selected === "string"
+    ? { rootPath: selected, rootName: null }
+    : null;
 }
 
 export async function chooseDocument(): Promise<string | null> {

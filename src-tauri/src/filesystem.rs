@@ -13,18 +13,29 @@ const MARKDOWN_EXTENSIONS: &[&str] = &["md", "markdown", "mdown", "mkd", "txt"];
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DirectoryEntry {
-    name: String,
-    path: String,
-    kind: EntryKind,
-    modified_at_ms: Option<u128>,
-    size_bytes: Option<u64>,
+    pub name: String,
+    pub path: String,
+    pub kind: EntryKind,
+    pub modified_at_ms: Option<u128>,
+    pub size_bytes: Option<u64>,
 }
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "lowercase")]
-enum EntryKind {
+pub enum EntryKind {
     Directory,
     Document,
+}
+
+impl EntryKind {
+    /// 目录排在文稿前面。仅 Android 的 SAF 列目录用到。
+    #[cfg_attr(not(target_os = "android"), allow(dead_code))]
+    pub fn sort_rank(&self) -> u8 {
+        match self {
+            Self::Directory => 0,
+            Self::Document => 1,
+        }
+    }
 }
 
 #[derive(Debug, Serialize)]
@@ -33,6 +44,17 @@ pub struct SaveReceipt {
     bytes_written: usize,
     modified_at_ms: u128,
     path: String,
+}
+
+impl SaveReceipt {
+    #[cfg_attr(not(target_os = "android"), allow(dead_code))]
+    pub fn new(bytes_written: usize, modified_at_ms: u128, path: String) -> Self {
+        Self {
+            bytes_written,
+            modified_at_ms,
+            path,
+        }
+    }
 }
 
 fn user_facing_error(operation: &str, path: &Path, error: impl std::fmt::Display) -> String {
@@ -179,19 +201,48 @@ fn write_document_contents(path: &Path, contents: &str) -> Result<SaveReceipt, S
     })
 }
 
+// Android 走 SAF content URI，其余平台按绝对路径走 std::fs。
+#[cfg(not(target_os = "android"))]
 #[tauri::command]
-pub fn list_directory(path: String) -> Result<Vec<DirectoryEntry>, String> {
+pub async fn list_directory(path: String) -> Result<Vec<DirectoryEntry>, String> {
     read_directory_entries(Path::new(&path))
 }
 
+#[cfg(not(target_os = "android"))]
 #[tauri::command]
-pub fn read_document(path: String) -> Result<String, String> {
+pub async fn read_document(path: String) -> Result<String, String> {
     read_document_contents(Path::new(&path))
 }
 
+#[cfg(not(target_os = "android"))]
 #[tauri::command]
-pub fn write_document(path: String, contents: String) -> Result<SaveReceipt, String> {
+pub async fn write_document(path: String, contents: String) -> Result<SaveReceipt, String> {
     write_document_contents(Path::new(&path), &contents)
+}
+
+#[cfg(target_os = "android")]
+#[tauri::command]
+pub async fn list_directory(
+    app: tauri::AppHandle,
+    path: String,
+) -> Result<Vec<DirectoryEntry>, String> {
+    crate::android_fs::list_directory(app, path).await
+}
+
+#[cfg(target_os = "android")]
+#[tauri::command]
+pub async fn read_document(app: tauri::AppHandle, path: String) -> Result<String, String> {
+    crate::android_fs::read_document(app, path).await
+}
+
+#[cfg(target_os = "android")]
+#[tauri::command]
+pub async fn write_document(
+    app: tauri::AppHandle,
+    path: String,
+    contents: String,
+) -> Result<SaveReceipt, String> {
+    crate::android_fs::write_document(app, path, contents).await
 }
 
 #[cfg(test)]

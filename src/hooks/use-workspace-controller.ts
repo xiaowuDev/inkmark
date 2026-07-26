@@ -207,14 +207,15 @@ export function useWorkspaceController() {
   }, []);
 
   const openWorkspace = useCallback(async () => {
-    const rootPath = await chooseWorkspaceDirectory();
-    if (!rootPath) {
+    const picked = await chooseWorkspaceDirectory();
+    if (!picked) {
       return;
     }
 
+    const { rootPath } = picked;
     const nextWorkspace = {
       rootPath,
-      rootName: directoryNameFromPath(rootPath),
+      rootName: picked.rootName ?? directoryNameFromPath(rootPath),
     };
     setWorkspace(nextWorkspace);
     setEntriesByDirectory({});

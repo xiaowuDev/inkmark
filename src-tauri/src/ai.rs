@@ -654,7 +654,11 @@ fn collect_scoped_snapshot(request: SnapshotRequest<'_>) -> Result<WorkspaceSnap
         scope_paths,
         selection,
     } = request;
-    let root = root_path.map(PathBuf::from);
+    // Android 的工作区是 SAF content URI，不能用 std::fs 遍历；
+    // 此时降级为「只带当前文稿」，AI 仍然可用。
+    let root = root_path
+        .filter(|path| !path.starts_with('{'))
+        .map(PathBuf::from);
     if let Some(root) = &root {
         if !root.is_dir() {
             return Err(format!("工作区不存在：{}", root.display()));
@@ -780,7 +784,8 @@ pub async fn list_workspace_entries(root_path: String) -> Result<Vec<WorkspaceEn
     tauri::async_runtime::spawn_blocking(move || {
         let root = PathBuf::from(&root_path);
         if !root.is_dir() {
-            return Err(format!("工作区不存在：{}", root.display()));
+            // SAF 工作区没有可遍历的绝对路径，`@` 索引留空即可。
+            return Ok(Vec::new());
         }
 
         let mut entries = Vec::new();
