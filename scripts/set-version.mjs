@@ -18,9 +18,17 @@ async function writeAtomically(path, contents) {
 
 async function updateJsonVersion(path) {
   const contents = await readFile(path, "utf8");
-  const document = JSON.parse(contents);
-  document.version = version;
-  await writeAtomically(path, `${JSON.stringify(document, null, 2)}\n`);
+  JSON.parse(contents);
+  const versionPropertyPattern = /^(\s*"version"\s*:\s*)"[^"]+"/mu;
+
+  if (!versionPropertyPattern.test(contents)) {
+    throw new Error(`Could not find the JSON version in ${path}.`);
+  }
+
+  await writeAtomically(
+    path,
+    contents.replace(versionPropertyPattern, `$1"${version}"`),
+  );
 }
 
 async function updateCargoVersion(path) {
