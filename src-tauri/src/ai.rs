@@ -4,11 +4,14 @@ use keyring::{Entry, Error as KeyringError};
 use reqwest::{Client, StatusCode};
 use serde::{Deserialize, Serialize};
 use std::{
-    collections::HashSet,
+    collections::{HashMap, HashSet},
     fs::File,
     io::{Read, Take},
     path::{Path, PathBuf},
-    sync::OnceLock,
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc, Mutex, OnceLock, PoisonError,
+    },
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
 use tauri::{AppHandle, Emitter};
@@ -75,6 +78,41 @@ const IGNORED_DIRECTORIES: &[&str] = &[
 
 static HTTP_CLIENT: OnceLock<Client> = OnceLock::new();
 
+/// Cancellation flags for in-flight chat requests, keyed by request id.
+#[derive(Default)]
+pub struct AiCancelRegistry {
+    active: Mutex<HashMap<String, Arc<AtomicBool>>>,
+}
+
+impl AiCancelRegistry {
+    fn register(&self, request_id: &str) -> Arc<AtomicBool> {
+        let flag = Arc::new(AtomicBool::new(false));
+        self.active
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .insert(request_id.to_string(), Arc::clone(&flag));
+        flag
+    }
+
+    fn unregister(&self, request_id: &str) {
+        self.active
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .remove(request_id);
+    }
+
+    fn cancel(&self, request_id: &str) {
+        if let Some(flag) = self
+            .active
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .get(request_id)
+        {
+            flag.store(true, Ordering::Relaxed);
+        }
+    }
+}
+
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AiConfiguration {
@@ -125,6 +163,7 @@ pub struct ChatReceipt {
     content: String,
     context: WorkspaceContextSummary,
     model: &'static str,
+    was_cancelled: bool,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -711,7 +750,8 @@ async fn send_streaming_chat(
     api_key: &str,
     request_id: &str,
     request: &DeepSeekRequest,
-) -> Result<String, String> {
+    cancel_flag: &AtomicBool,
+) -> Result<(String, bool), String> {
     let response = http_client()?
         .post(DEEPSEEK_API_URL)
         .bearer_auth(api_key)
@@ -727,7 +767,12 @@ async fn send_streaming_chat(
 
     let mut stream = response.bytes_stream().eventsource();
     let mut content = String::new();
+    let mut was_cancelled = false;
     while let Some(event) = stream.next().await {
+        if cancel_flag.load(Ordering::Relaxed) {
+            was_cancelled = true;
+            break;
+        }
         let event = event.map_err(|error| format!("接收 DeepSeek 回复失败：{error}"))?;
         if event.data == "[DONE]" {
             break;
@@ -745,11 +790,11 @@ async fn send_streaming_chat(
         }
     }
 
-    if content.trim().is_empty() {
+    if !was_cancelled && content.trim().is_empty() {
         return Err("DeepSeek 返回了空内容，请重试。".to_string());
     }
     emit_stream_event(app, request_id, "", true)?;
-    Ok(content)
+    Ok((content, was_cancelled))
 }
 
 fn graph_system_message() -> ChatMessage {
@@ -896,14 +941,12 @@ pub async fn test_deepseek_connection() -> Result<(), String> {
         .map(|_| ())
 }
 
-#[tauri::command]
-pub async fn chat_with_workspace(
-    app: AppHandle,
+async fn run_workspace_chat(
+    app: &AppHandle,
     request: WorkspaceChatRequest,
+    request_id: &str,
+    cancel_flag: &AtomicBool,
 ) -> Result<ChatReceipt, String> {
-    if request.request_id.trim().is_empty() {
-        return Err("聊天请求标识无效。".to_string());
-    }
     let api_key = required_api_key().await?;
     let snapshot = collect_workspace_snapshot(
         request.root_path.as_deref(),
@@ -924,14 +967,36 @@ pub async fn chat_with_workspace(
         thinking: ThinkingMode { r#type: "disabled" },
         response_format: None,
     };
-    let content =
-        send_streaming_chat(&app, &api_key, request.request_id.trim(), &api_request).await?;
+    let (content, was_cancelled) =
+        send_streaming_chat(app, &api_key, request_id, &api_request, cancel_flag).await?;
 
     Ok(ChatReceipt {
         content,
         context: snapshot.summary(),
         model: DEEPSEEK_MODEL,
+        was_cancelled,
     })
+}
+
+#[tauri::command]
+pub async fn chat_with_workspace(
+    app: AppHandle,
+    registry: tauri::State<'_, AiCancelRegistry>,
+    request: WorkspaceChatRequest,
+) -> Result<ChatReceipt, String> {
+    let request_id = request.request_id.trim().to_string();
+    if request_id.is_empty() {
+        return Err("聊天请求标识无效。".to_string());
+    }
+    let cancel_flag = registry.register(&request_id);
+    let result = run_workspace_chat(&app, request, &request_id, &cancel_flag).await;
+    registry.unregister(&request_id);
+    result
+}
+
+#[tauri::command]
+pub fn cancel_ai_chat(registry: tauri::State<'_, AiCancelRegistry>, request_id: String) {
+    registry.cancel(request_id.trim());
 }
 
 #[tauri::command]

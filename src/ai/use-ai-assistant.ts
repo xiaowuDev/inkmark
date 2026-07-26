@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import {
   buildKnowledgeGraph,
+  cancelAiChat,
   chatWithWorkspace,
   deleteDeepSeekApiKey,
   getAiConfiguration,
@@ -85,6 +86,7 @@ export function useAiAssistant({
   const [graphError, setGraphError] = useState<string | null>(null);
   const pendingDeltasRef = useRef(new Map<string, string>());
   const flushFrameRef = useRef<number | null>(null);
+  const activeRequestIdRef = useRef<string | null>(null);
 
   const flushStreamDeltas = useCallback(() => {
     flushFrameRef.current = null;
@@ -179,13 +181,8 @@ export function useAiAssistant({
     setConfigurationError(null);
   }, []);
 
-  const sendMessage = useCallback(
-    async (question: string) => {
-      const content = question.trim();
-      if (!content || isSending) {
-        return;
-      }
-
+  const dispatchSend = useCallback(
+    async (history: readonly AiMessage[], content: string) => {
       const userMessage: AiMessage = {
         id: crypto.randomUUID(),
         role: "user",
@@ -199,11 +196,12 @@ export function useAiAssistant({
         content: "",
         errorMessage: null,
       };
-      const conversation = [...messages, userMessage].filter(
+      const conversation = [...history, userMessage].filter(
         (message) => !message.errorMessage && message.content.trim(),
       );
-      setMessages((current) => [...current, userMessage, assistantMessage]);
+      setMessages([...history, userMessage, assistantMessage]);
       setIsSending(true);
+      activeRequestIdRef.current = requestId;
 
       try {
         const receipt = await chatWithWorkspace(
@@ -212,18 +210,24 @@ export function useAiAssistant({
           conversation,
         );
         flushStreamDeltas();
-        setMessages((current) =>
-          current.map((message) =>
-            message.id === requestId
-              ? {
-                  ...message,
-                  content: receipt.content,
-                  errorMessage: null,
-                }
-              : message,
-          ),
-        );
-        setLastReceipt(receipt);
+        if (receipt.wasCancelled && !receipt.content) {
+          setMessages((current) =>
+            current.filter((message) => message.id !== requestId),
+          );
+        } else {
+          setMessages((current) =>
+            current.map((message) =>
+              message.id === requestId
+                ? {
+                    ...message,
+                    content: receipt.content,
+                    errorMessage: null,
+                  }
+                : message,
+            ),
+          );
+          setLastReceipt(receipt);
+        }
       } catch (error) {
         flushStreamDeltas();
         setMessages((current) =>
@@ -237,10 +241,50 @@ export function useAiAssistant({
           ),
         );
       } finally {
+        activeRequestIdRef.current = null;
         setIsSending(false);
       }
     },
-    [flushStreamDeltas, getSource, isSending, messages],
+    [flushStreamDeltas, getSource],
+  );
+
+  const sendMessage = useCallback(
+    async (question: string) => {
+      const content = question.trim();
+      if (!content || isSending) {
+        return;
+      }
+      await dispatchSend(messages, content);
+    },
+    [dispatchSend, isSending, messages],
+  );
+
+  const stopGeneration = useCallback(() => {
+    const requestId = activeRequestIdRef.current;
+    if (requestId) {
+      void cancelAiChat(requestId).catch(() => undefined);
+    }
+  }, []);
+
+  const retryAssistantMessage = useCallback(
+    (assistantMessageId: string) => {
+      if (isSending) {
+        return;
+      }
+      const index = messages.findIndex(
+        (message) => message.id === assistantMessageId,
+      );
+      const userMessage = index > 0 ? messages[index - 1] : undefined;
+      if (userMessage?.role !== "user") {
+        return;
+      }
+      const history = messages.filter(
+        (_, messageIndex) =>
+          messageIndex !== index && messageIndex !== index - 1,
+      );
+      void dispatchSend(history, userMessage.content);
+    },
+    [dispatchSend, isSending, messages],
   );
 
   const clearMessages = useCallback(() => {
@@ -283,8 +327,10 @@ export function useAiAssistant({
     lastReceipt,
     messages,
     removeApiKey,
+    retryAssistantMessage,
     saveApiKey,
     sendMessage,
+    stopGeneration,
     testConnection,
   };
 }

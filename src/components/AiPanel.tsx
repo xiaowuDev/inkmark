@@ -139,7 +139,9 @@ export function AiPanel({
             onOpenSettings={() => {
               setView("settings");
             }}
+            onRetry={assistant.retryAssistantMessage}
             onSend={assistant.sendMessage}
+            onStop={assistant.stopGeneration}
             workspaceName={workspaceName}
           />
         ) : null}

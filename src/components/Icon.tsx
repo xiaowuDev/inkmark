@@ -6,6 +6,7 @@ export type IconName =
   | "chevron"
   | "check"
   | "close"
+  | "copy"
   | "document"
   | "export"
   | "folder"
@@ -19,6 +20,7 @@ export type IconName =
   | "send"
   | "settings"
   | "sidebar"
+  | "stop"
   | "trash";
 
 interface IconProps extends SVGProps<SVGSVGElement> {
@@ -36,6 +38,7 @@ const ICON_PATHS: Record<IconName, string[]> = {
   chevron: ["m9 18 6-6-6-6"],
   check: ["m5 12.5 4.2 4L19 7"],
   close: ["m7 7 10 10", "M17 7 7 17"],
+  copy: ["M9.5 9.5h10v10h-10z", "M6.5 14.5h-2v-10h10v2"],
   document: [
     "M6.5 3.5h7l4 4v13h-11z",
     "M13.5 3.5v4h4",
@@ -78,6 +81,7 @@ const ICON_PATHS: Record<IconName, string[]> = {
     "M10 16v4",
   ],
   sidebar: ["M4 4.5h16v15H4z", "M9 4.5v15"],
+  stop: ["M7.5 7.5h9v9h-9z"],
   trash: [
     "M4.5 7h15",
     "M9 7V4.5h6V7",

@@ -1,19 +1,12 @@
-import {
-  useEffect,
-  useRef,
-  useState,
-  type KeyboardEvent,
-  type ReactNode,
-} from "react";
+import { useEffect, useRef, useState, type KeyboardEvent } from "react";
 
-import {
-  formatContextBytes,
-  splitWorkspaceReferences,
-} from "../ai/message-utils";
+import { formatContextBytes } from "../ai/message-utils";
 import type { AiConfiguration, AiMessage, ChatReceipt } from "../ai/types";
+import { AiMarkdown, PlainMessageContent } from "./AiMarkdown";
 import { Icon } from "./Icon";
 
 const SUGGESTIONS = ["总结当前文稿", "梳理工作区主题", "找出相关文档"];
+const SCROLL_PIN_THRESHOLD_PX = 90;
 
 interface AiChatProps {
   activeDocumentName: string | null;
@@ -25,40 +18,9 @@ interface AiChatProps {
   onClear: () => void;
   onOpenReference: (relativePath: string) => void;
   onOpenSettings: () => void;
+  onRetry: (assistantMessageId: string) => void;
   onSend: (question: string) => Promise<void>;
-}
-
-function MessageContent({
-  content,
-  onOpenReference,
-}: {
-  content: string;
-  onOpenReference: (relativePath: string) => void;
-}) {
-  return (
-    <>
-      {splitWorkspaceReferences(content).map((part, index): ReactNode =>
-        part.type === "reference" ? (
-          <button
-            className="ai-file-reference"
-            key={`${part.value}-${String(index)}`}
-            onClick={() => {
-              onOpenReference(part.value);
-            }}
-            title={`打开 ${part.value}`}
-            type="button"
-          >
-            <Icon name="document" />
-            {part.value}
-          </button>
-        ) : (
-          <span key={`${part.value.slice(0, 18)}-${String(index)}`}>
-            {part.value}
-          </span>
-        ),
-      )}
-    </>
-  );
+  onStop: () => void;
 }
 
 export function AiChat({
@@ -71,15 +33,31 @@ export function AiChat({
   onClear,
   onOpenReference,
   onOpenSettings,
+  onRetry,
   onSend,
+  onStop,
 }: AiChatProps) {
   const [draft, setDraft] = useState("");
-  const bottomRef = useRef<HTMLDivElement>(null);
+  const [copiedMessageId, setCopiedMessageId] = useState<string | null>(null);
+  const listRef = useRef<HTMLDivElement>(null);
+  const isPinnedToBottomRef = useRef(true);
   const isConfigured = configuration?.isConfigured ?? false;
 
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ block: "end", behavior: "smooth" });
+    const list = listRef.current;
+    if (list && isPinnedToBottomRef.current) {
+      list.scrollTo({ top: list.scrollHeight, behavior: "instant" });
+    }
   }, [isSending, messages]);
+
+  function handleListScroll() {
+    const list = listRef.current;
+    if (list) {
+      isPinnedToBottomRef.current =
+        list.scrollHeight - list.scrollTop - list.clientHeight <
+        SCROLL_PIN_THRESHOLD_PX;
+    }
+  }
 
   async function submit(question = draft) {
     const content = question.trim();
@@ -87,6 +65,7 @@ export function AiChat({
       return;
     }
     setDraft("");
+    isPinnedToBottomRef.current = true;
     await onSend(content);
   }
 
@@ -98,6 +77,20 @@ export function AiChat({
     ) {
       event.preventDefault();
       void submit();
+    }
+  }
+
+  async function copyMessage(message: AiMessage) {
+    try {
+      await navigator.clipboard.writeText(message.content);
+      setCopiedMessageId(message.id);
+      window.setTimeout(() => {
+        setCopiedMessageId((current) =>
+          current === message.id ? null : current,
+        );
+      }, 1600);
+    } catch {
+      // Clipboard access can be denied; the button simply stays unchanged.
     }
   }
 
@@ -124,6 +117,8 @@ export function AiChat({
     );
   }
 
+  const lastMessageId = messages.at(-1)?.id ?? null;
+
   return (
     <div className="ai-chat">
       <div className="ai-context-strip">
@@ -143,7 +138,12 @@ export function AiChat({
         )}
       </div>
 
-      <div className="ai-message-list" aria-live="polite">
+      <div
+        aria-live="polite"
+        className="ai-message-list"
+        onScroll={handleListScroll}
+        ref={listRef}
+      >
         {messages.length === 0 ? (
           <div className="ai-chat-intro">
             <p className="eyebrow">WORKSPACE INTELLIGENCE</p>
@@ -168,46 +168,101 @@ export function AiChat({
             </div>
           </div>
         ) : (
-          messages.map((message) => (
-            <article
-              className={`ai-message is-${message.role}`}
-              key={message.id}
-            >
-              <div className="ai-message-author">
-                {message.role === "assistant" ? (
-                  <>
-                    <span className="assistant-mark">墨</span>
-                    DeepSeek
-                  </>
-                ) : (
-                  "你"
-                )}
-              </div>
-              <div
-                className={`ai-message-content ${
-                  message.errorMessage ? "has-error" : ""
-                }`}
+          messages.map((message) => {
+            const isStreaming =
+              isSending &&
+              message.role === "assistant" &&
+              message.id === lastMessageId;
+            const canCopy =
+              message.role === "assistant" &&
+              !isStreaming &&
+              message.content.length > 0;
+            const canRetry =
+              message.role === "assistant" &&
+              !isSending &&
+              message.errorMessage !== null;
+            return (
+              <article
+                className={`ai-message is-${message.role}`}
+                key={message.id}
               >
-                {message.content ? (
-                  <MessageContent
-                    content={message.content}
-                    onOpenReference={onOpenReference}
-                  />
-                ) : message.errorMessage ? null : (
-                  <span className="ai-thinking">
-                    <i />
-                    <i />
-                    <i />
-                  </span>
-                )}
-                {message.errorMessage ? (
-                  <span>{message.errorMessage}</span>
+                <div className="ai-message-author">
+                  {message.role === "assistant" ? (
+                    <>
+                      <span className="assistant-mark">墨</span>
+                      DeepSeek
+                    </>
+                  ) : (
+                    "你"
+                  )}
+                </div>
+                <div
+                  className={`ai-message-content ${
+                    message.errorMessage ? "has-error" : ""
+                  }`}
+                >
+                  {message.content ? (
+                    message.role === "assistant" ? (
+                      <AiMarkdown
+                        content={message.content}
+                        onOpenReference={onOpenReference}
+                      />
+                    ) : (
+                      <PlainMessageContent
+                        content={message.content}
+                        onOpenReference={onOpenReference}
+                      />
+                    )
+                  ) : message.errorMessage ? null : (
+                    <span className="ai-thinking">
+                      <i />
+                      <i />
+                      <i />
+                    </span>
+                  )}
+                  {message.errorMessage ? (
+                    <span>{message.errorMessage}</span>
+                  ) : null}
+                </div>
+                {canCopy || canRetry ? (
+                  <div
+                    className={`ai-message-actions ${
+                      canRetry ? "is-visible" : ""
+                    }`}
+                  >
+                    {canCopy ? (
+                      <button
+                        onClick={() => {
+                          void copyMessage(message);
+                        }}
+                        type="button"
+                      >
+                        <Icon
+                          name={
+                            copiedMessageId === message.id ? "check" : "copy"
+                          }
+                        />
+                        {copiedMessageId === message.id ? "已复制" : "复制"}
+                      </button>
+                    ) : null}
+                    {canRetry ? (
+                      <button
+                        onClick={() => {
+                          isPinnedToBottomRef.current = true;
+                          onRetry(message.id);
+                        }}
+                        type="button"
+                      >
+                        <Icon name="refresh" />
+                        重试
+                      </button>
+                    ) : null}
+                  </div>
                 ) : null}
-              </div>
-            </article>
-          ))
+              </article>
+            );
+          })
         )}
-        <div ref={bottomRef} />
       </div>
 
       <div className="ai-composer-wrap">
@@ -224,7 +279,6 @@ export function AiChat({
         <div className="ai-composer">
           <textarea
             aria-label="向 DeepSeek 提问"
-            disabled={isSending}
             onChange={(event) => {
               setDraft(event.target.value);
             }}
@@ -233,17 +287,29 @@ export function AiChat({
             rows={3}
             value={draft}
           />
-          <button
-            aria-label="发送"
-            disabled={!draft.trim() || isSending}
-            onClick={() => {
-              void submit();
-            }}
-            title="发送 (Enter)"
-            type="button"
-          >
-            <Icon name="send" />
-          </button>
+          {isSending ? (
+            <button
+              aria-label="停止生成"
+              className="is-stop"
+              onClick={onStop}
+              title="停止生成"
+              type="button"
+            >
+              <Icon name="stop" />
+            </button>
+          ) : (
+            <button
+              aria-label="发送"
+              disabled={!draft.trim()}
+              onClick={() => {
+                void submit();
+              }}
+              title="发送 (Enter)"
+              type="button"
+            >
+              <Icon name="send" />
+            </button>
+          )}
         </div>
         <p>Enter 发送 · Shift + Enter 换行</p>
       </div>

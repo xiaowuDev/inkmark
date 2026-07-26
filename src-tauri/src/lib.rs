@@ -15,8 +15,10 @@ pub fn run() {
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_dialog::init())
+        .manage(ai::AiCancelRegistry::default())
         .invoke_handler(tauri::generate_handler![
             ai::build_knowledge_graph,
+            ai::cancel_ai_chat,
             ai::chat_with_workspace,
             ai::delete_deepseek_api_key,
             ai::get_ai_configuration,

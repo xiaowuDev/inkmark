@@ -32,6 +32,7 @@ export interface ChatReceipt {
   content: string;
   context: WorkspaceContextSummary;
   model: string;
+  wasCancelled: boolean;
 }
 
 export type KnowledgeNodeKind =

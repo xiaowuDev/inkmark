@@ -55,6 +55,10 @@ export function chatWithWorkspace(
   return invoke<ChatReceipt>("chat_with_workspace", { request });
 }
 
+export function cancelAiChat(requestId: string): Promise<void> {
+  return invoke<null>("cancel_ai_chat", { requestId }).then(() => undefined);
+}
+
 export function buildKnowledgeGraph(
   source: WorkspaceAiSource & { rootPath: string },
 ): Promise<KnowledgeGraph> {
