@@ -50,18 +50,15 @@ jobs:
       - name: Initialize the Android project
         run: pnpm tauri android init
 
+      # 默认只编 aarch64：2019 年后的手机都是这个架构，而四架构合成的
+      # universal debug APK 有 734MB，既难传也没必要。
       - name: Build APK
-        run: pnpm tauri android build ${{ inputs.release && '--apk' || '--debug --apk' }}
-
-      # 只上传 arm64（2019 年后的手机都是），避免四架构 debug 包动辄 180MB+。
-      - uses: actions/upload-artifact@v4
-        with:
-          name: inkmark-android-arm64
-          path: src-tauri/gen/android/app/build/outputs/apk/**/*arm64*.apk
-          if-no-files-found: error
+        run: |
+          pnpm tauri android build --target aarch64 --apk \
+            ${{ inputs.release && ' ' || '--debug' }}
 
       - uses: actions/upload-artifact@v4
         with:
-          name: inkmark-android-all-architectures
+          name: inkmark-android-apk
           path: src-tauri/gen/android/app/build/outputs/apk/**/*.apk
           if-no-files-found: error
