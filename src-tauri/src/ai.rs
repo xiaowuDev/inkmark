@@ -474,8 +474,7 @@ mod secret_store {
     pub fn write(api_key: &str) -> Result<(), String> {
         let path = path()?;
         if let Some(parent) = path.parent() {
-            fs::create_dir_all(parent)
-                .map_err(|error| format!("创建密钥目录失败：{error}"))?;
+            fs::create_dir_all(parent).map_err(|error| format!("创建密钥目录失败：{error}"))?;
         }
         fs::write(&path, api_key).map_err(|error| format!("保存 DeepSeek 密钥失败：{error}"))
     }
