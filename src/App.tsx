@@ -3,15 +3,20 @@ import {
   Suspense,
   useCallback,
   useEffect,
+  useMemo,
+  useRef,
   useState,
   type CSSProperties,
 } from "react";
 
-import type { WorkspaceAiSource } from "./ai/types";
+import type { SelectionAction } from "./ai/selection-actions";
+import type { AiQuickTask, WorkspaceAiSource } from "./ai/types";
 import { EditorTabs } from "./components/EditorTabs";
 import { FileSidebar } from "./components/FileSidebar";
 import { Icon } from "./components/Icon";
+import type { EditorWriteBack } from "./components/MarkdownEditor";
 import { PaneResizer } from "./components/PaneResizer";
+
 import { Welcome } from "./components/Welcome";
 import { useAutomaticUpdater } from "./hooks/use-automatic-updater";
 import {
@@ -51,6 +56,40 @@ function App() {
   const [pdfStatus, setPdfStatus] = useState<string | null>(null);
   const [isAiPanelVisible, setIsAiPanelVisible] = useState(false);
   const [hasOpenedAiPanel, setHasOpenedAiPanel] = useState(false);
+  const [quickTask, setQuickTask] = useState<AiQuickTask | null>(null);
+  const [canWriteBack, setCanWriteBack] = useState(false);
+  const writeBackRef = useRef<EditorWriteBack | null>(null);
+
+  const registerWriteBack = useCallback((writeBack: EditorWriteBack | null) => {
+    writeBackRef.current = writeBack;
+    setCanWriteBack(writeBack !== null);
+  }, []);
+
+  const relativeActivePath = useMemo(() => {
+    if (!activePath || !workspaceRootPath) {
+      return null;
+    }
+    const prefix = `${workspaceRootPath}/`;
+    return activePath.startsWith(prefix)
+      ? activePath.slice(prefix.length)
+      : null;
+  }, [activePath, workspaceRootPath]);
+
+  const runSelectionAction = useCallback(
+    (action: SelectionAction, selection: string) => {
+      setHasOpenedAiPanel(true);
+      setIsAiPanelVisible(true);
+      setQuickTask((current) => ({
+        id: (current?.id ?? 0) + 1,
+        label: action.label,
+        prompt: action.prompt,
+        replaces: action.replaces,
+        scopePath: relativeActivePath,
+        selection,
+      }));
+    },
+    [relativeActivePath],
+  );
 
   const getAiSource = useCallback(
     (): WorkspaceAiSource => ({
@@ -281,6 +320,8 @@ function App() {
                   initialValue={controller.activeDocumentValue}
                   onChange={controller.handleEditorChange}
                   onReady={() => undefined}
+                  onSelectionAction={runSelectionAction}
+                  registerWriteBack={registerWriteBack}
                 />
               </Suspense>
             )}
@@ -312,12 +353,20 @@ function App() {
           >
             <AiPanel
               activeDocumentName={activeTab?.name ?? null}
+              canWriteBack={canWriteBack}
               getSource={getAiSource}
               isVisible={isAiPanelVisible}
               onClose={() => {
                 setIsAiPanelVisible(false);
               }}
+              onInsertIntoDocument={(text) => {
+                writeBackRef.current?.insertAtCursor(text);
+              }}
               onOpenReference={openWorkspaceReference}
+              onReplaceSelection={(text) => {
+                writeBackRef.current?.replaceSelection(text);
+              }}
+              quickTask={quickTask}
               workspaceName={controller.workspace?.rootName ?? null}
               workspaceRootPath={controller.workspace?.rootPath ?? null}
             />

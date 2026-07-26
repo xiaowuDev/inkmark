@@ -1,7 +1,13 @@
-import { useEffect, useRef, useState, type KeyboardEvent } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { formatContextBytes } from "../ai/message-utils";
-import type { AiConfiguration, AiMessage, ChatReceipt } from "../ai/types";
+import type {
+  AiConfiguration,
+  AiMessage,
+  ChatReceipt,
+  WorkspaceEntry,
+} from "../ai/types";
+import { AiComposer } from "./AiComposer";
 import { AiMarkdown, PlainMessageContent } from "./AiMarkdown";
 import { Icon } from "./Icon";
 
@@ -14,10 +20,16 @@ interface AiChatProps {
   isSending: boolean;
   lastReceipt: ChatReceipt | null;
   messages: readonly AiMessage[];
+  mentions: readonly WorkspaceEntry[];
   workspaceName: string | null;
+  workspaceRootPath: string | null;
+  canWriteBack: boolean;
   onClear: () => void;
+  onInsertIntoDocument: (text: string) => void;
+  onMentionsChange: (mentions: readonly WorkspaceEntry[]) => void;
   onOpenReference: (relativePath: string) => void;
   onOpenSettings: () => void;
+  onReplaceSelection: (text: string) => void;
   onRetry: (assistantMessageId: string) => void;
   onSend: (question: string) => Promise<void>;
   onStop: () => void;
@@ -29,15 +41,20 @@ export function AiChat({
   isSending,
   lastReceipt,
   messages,
+  mentions,
   workspaceName,
+  workspaceRootPath,
+  canWriteBack,
   onClear,
+  onInsertIntoDocument,
+  onMentionsChange,
   onOpenReference,
   onOpenSettings,
+  onReplaceSelection,
   onRetry,
   onSend,
   onStop,
 }: AiChatProps) {
-  const [draft, setDraft] = useState("");
   const [copiedMessageId, setCopiedMessageId] = useState<string | null>(null);
   const listRef = useRef<HTMLDivElement>(null);
   const isPinnedToBottomRef = useRef(true);
@@ -59,25 +76,13 @@ export function AiChat({
     }
   }
 
-  async function submit(question = draft) {
+  function submit(question: string) {
     const content = question.trim();
     if (!content || isSending || !isConfigured) {
       return;
     }
-    setDraft("");
     isPinnedToBottomRef.current = true;
-    await onSend(content);
-  }
-
-  function handleKeyDown(event: KeyboardEvent<HTMLTextAreaElement>) {
-    if (
-      event.key === "Enter" &&
-      !event.shiftKey &&
-      !event.nativeEvent.isComposing
-    ) {
-      event.preventDefault();
-      void submit();
-    }
+    void onSend(content);
   }
 
   async function copyMessage(message: AiMessage) {
@@ -157,7 +162,7 @@ export function AiChat({
                 <button
                   key={suggestion}
                   onClick={() => {
-                    void submit(suggestion);
+                    submit(suggestion);
                   }}
                   type="button"
                 >
@@ -245,6 +250,30 @@ export function AiChat({
                         {copiedMessageId === message.id ? "已复制" : "复制"}
                       </button>
                     ) : null}
+                    {canCopy && canWriteBack ? (
+                      <>
+                        <button
+                          onClick={() => {
+                            onReplaceSelection(message.content);
+                          }}
+                          title="用这段内容替换编辑器中选中的文字"
+                          type="button"
+                        >
+                          <Icon name="replace" />
+                          替换选中
+                        </button>
+                        <button
+                          onClick={() => {
+                            onInsertIntoDocument(message.content);
+                          }}
+                          title="插入到编辑器光标处"
+                          type="button"
+                        >
+                          <Icon name="insert" />
+                          插入文档
+                        </button>
+                      </>
+                    ) : null}
                     {canRetry ? (
                       <button
                         onClick={() => {
@@ -265,7 +294,7 @@ export function AiChat({
         )}
       </div>
 
-      <div className="ai-composer-wrap">
+      <div className="ai-composer-shell">
         {messages.length > 0 ? (
           <button
             className="ai-clear-chat"
@@ -276,42 +305,14 @@ export function AiChat({
             清空对话
           </button>
         ) : null}
-        <div className="ai-composer">
-          <textarea
-            aria-label="向 DeepSeek 提问"
-            onChange={(event) => {
-              setDraft(event.target.value);
-            }}
-            onKeyDown={handleKeyDown}
-            placeholder="询问当前文稿或整个工作区…"
-            rows={3}
-            value={draft}
-          />
-          {isSending ? (
-            <button
-              aria-label="停止生成"
-              className="is-stop"
-              onClick={onStop}
-              title="停止生成"
-              type="button"
-            >
-              <Icon name="stop" />
-            </button>
-          ) : (
-            <button
-              aria-label="发送"
-              disabled={!draft.trim()}
-              onClick={() => {
-                void submit();
-              }}
-              title="发送 (Enter)"
-              type="button"
-            >
-              <Icon name="send" />
-            </button>
-          )}
-        </div>
-        <p>Enter 发送 · Shift + Enter 换行</p>
+        <AiComposer
+          isSending={isSending}
+          mentions={mentions}
+          onMentionsChange={onMentionsChange}
+          onSend={submit}
+          onStop={onStop}
+          workspaceRootPath={workspaceRootPath}
+        />
       </div>
     </div>
   );

@@ -4,10 +4,12 @@ import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import type {
   AiConfiguration,
   AiMessage,
+  AiRequestContext,
   AiStreamChunk,
   ChatReceipt,
   KnowledgeGraph,
   WorkspaceAiSource,
+  WorkspaceEntry,
 } from "./types";
 
 interface ChatCommandRequest {
@@ -15,6 +17,8 @@ interface ChatCommandRequest {
   rootPath: string | null;
   activePath: string | null;
   activeContent: string | null;
+  scopePaths: string[];
+  selection: string | null;
   messages: Pick<AiMessage, "role" | "content">[];
 }
 
@@ -44,15 +48,24 @@ export function chatWithWorkspace(
   requestId: string,
   source: WorkspaceAiSource,
   messages: readonly AiMessage[],
+  context: AiRequestContext,
 ): Promise<ChatReceipt> {
   const request: ChatCommandRequest = {
     requestId,
     rootPath: source.rootPath,
     activePath: source.activePath,
     activeContent: source.activeContent,
+    scopePaths: [...context.scopePaths],
+    selection: context.selection,
     messages: messages.map(({ role, content }) => ({ role, content })),
   };
   return invoke<ChatReceipt>("chat_with_workspace", { request });
+}
+
+export function listWorkspaceEntries(
+  rootPath: string,
+): Promise<WorkspaceEntry[]> {
+  return invoke<WorkspaceEntry[]>("list_workspace_entries", { rootPath });
 }
 
 export function cancelAiChat(requestId: string): Promise<void> {

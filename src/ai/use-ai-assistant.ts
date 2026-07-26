@@ -13,6 +13,7 @@ import {
 import type {
   AiConfiguration,
   AiMessage,
+  AiRequestContext,
   ChatReceipt,
   KnowledgeGraph,
   WorkspaceAiSource,
@@ -87,6 +88,8 @@ export function useAiAssistant({
   const pendingDeltasRef = useRef(new Map<string, string>());
   const flushFrameRef = useRef<number | null>(null);
   const activeRequestIdRef = useRef<string | null>(null);
+  /** 记住每条回复用的上下文，重试时才能原样复现。 */
+  const lastContextRef = useRef(new Map<string, AiRequestContext>());
 
   const flushStreamDeltas = useCallback(() => {
     flushFrameRef.current = null;
@@ -182,7 +185,11 @@ export function useAiAssistant({
   }, []);
 
   const dispatchSend = useCallback(
-    async (history: readonly AiMessage[], content: string) => {
+    async (
+      history: readonly AiMessage[],
+      content: string,
+      context: AiRequestContext = { scopePaths: [], selection: null },
+    ) => {
       const userMessage: AiMessage = {
         id: crypto.randomUUID(),
         role: "user",
@@ -202,12 +209,14 @@ export function useAiAssistant({
       setMessages([...history, userMessage, assistantMessage]);
       setIsSending(true);
       activeRequestIdRef.current = requestId;
+      lastContextRef.current.set(requestId, context);
 
       try {
         const receipt = await chatWithWorkspace(
           requestId,
           getSource(),
           conversation,
+          context,
         );
         flushStreamDeltas();
         if (receipt.wasCancelled && !receipt.content) {
@@ -249,12 +258,12 @@ export function useAiAssistant({
   );
 
   const sendMessage = useCallback(
-    async (question: string) => {
+    async (question: string, context?: AiRequestContext) => {
       const content = question.trim();
       if (!content || isSending) {
         return;
       }
-      await dispatchSend(messages, content);
+      await dispatchSend(messages, content, context);
     },
     [dispatchSend, isSending, messages],
   );
@@ -282,7 +291,11 @@ export function useAiAssistant({
         (_, messageIndex) =>
           messageIndex !== index && messageIndex !== index - 1,
       );
-      void dispatchSend(history, userMessage.content);
+      void dispatchSend(
+        history,
+        userMessage.content,
+        lastContextRef.current.get(assistantMessageId),
+      );
     },
     [dispatchSend, isSending, messages],
   );

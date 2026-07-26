@@ -5,12 +5,22 @@ import "vditor/dist/js/icons/ant.js";
 
 import { vditorAssetBaseUrl } from "../lib/vditor-assets";
 import { EditorSearch, type EditorSearchRequest } from "./EditorSearch";
+import type { SelectionAction } from "../ai/selection-actions";
+import { SelectionActions } from "./SelectionActions";
 
 interface MarkdownEditorProps {
   documentId: string;
   initialValue: string;
   onChange: (value: string) => void;
   onReady: () => void;
+  onSelectionAction: (action: SelectionAction, selection: string) => void;
+  /** 注册“把 AI 结果写回文档”的入口，供 AI 面板调用。 */
+  registerWriteBack: (writeBack: EditorWriteBack | null) => void;
+}
+
+export interface EditorWriteBack {
+  replaceSelection: (text: string) => void;
+  insertAtCursor: (text: string) => void;
 }
 
 const SEARCH_TOOLBAR_ICON = [
@@ -58,6 +68,8 @@ export function MarkdownEditor({
   initialValue,
   onChange,
   onReady,
+  onSelectionAction,
+  registerWriteBack,
 }: MarkdownEditorProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const editorRef = useRef<Vditor | null>(null);
@@ -194,6 +206,31 @@ export function MarkdownEditor({
   }, [openSearch]);
 
   useEffect(() => {
+    registerWriteBack({
+      insertAtCursor: (text) => {
+        editorRef.current?.focus();
+        editorRef.current?.insertValue(text, true);
+      },
+      replaceSelection: (text) => {
+        const editor = editorRef.current;
+        if (!editor) {
+          return;
+        }
+        editor.focus();
+        // 有选区就覆盖，没有则退化成插入，绝不静默丢弃 AI 的结果。
+        if (editor.getSelection()) {
+          editor.updateValue(text);
+        } else {
+          editor.insertValue(text, true);
+        }
+      },
+    });
+    return () => {
+      registerWriteBack(null);
+    };
+  }, [registerWriteBack]);
+
+  useEffect(() => {
     const editor = editorRef.current;
     if (!editor || activeDocumentIdRef.current === documentId) {
       return;
@@ -209,6 +246,10 @@ export function MarkdownEditor({
   return (
     <>
       <div className="markdown-editor" ref={containerRef} />
+      <SelectionActions
+        containerRef={containerRef}
+        onAction={onSelectionAction}
+      />
       <EditorSearch
         containerRef={containerRef}
         onClose={() => {

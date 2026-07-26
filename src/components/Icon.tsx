@@ -12,10 +12,12 @@ export type IconName =
   | "folder"
   | "folderOpen"
   | "graph"
+  | "insert"
   | "key"
   | "new"
   | "open"
   | "refresh"
+  | "replace"
   | "save"
   | "send"
   | "settings"
@@ -63,6 +65,7 @@ const ICON_PATHS: Record<IconName, string[]> = {
     "M4 19a2.5 2.5 0 1 0 5 0 2.5 2.5 0 0 0-5 0Z",
     "M15 19a2.5 2.5 0 1 0 5 0 2.5 2.5 0 0 0-5 0Z",
   ],
+  insert: ["M12 4.5v10", "m8 10.5 4 4 4-4", "M5 19.5h14"],
   key: ["M14 8a4 4 0 1 1-7.6 1.7L3 13v3h3v3h3l4.4-4.4A4 4 0 0 1 14 8Z"],
   new: ["M12 5v14", "M5 12h14"],
   open: [
@@ -70,6 +73,7 @@ const ICON_PATHS: Record<IconName, string[]> = {
     "m4.2 10.5 17.3-.1-2.2 9.1H6.1z",
   ],
   refresh: ["M19.5 7.5V3.8l-2.2 2.1A8 8 0 1 0 20 12", "M19.5 3.8h-3.7"],
+  replace: ["M4 7.5h9", "m10 4.5 3 3-3 3", "M20 16.5h-9", "m14 13.5-3 3 3 3"],
   save: ["M5 3.5h12.5l2 2v15H4.5v-17z", "M8 3.5v6h8v-6", "M8 20.5v-7h8v7"],
   send: ["m3.5 4 17 8-17 8 3-8z", "M6.5 12h14"],
   settings: [

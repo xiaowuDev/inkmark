@@ -1,6 +1,10 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
-import type { WorkspaceAiSource } from "../ai/types";
+import type {
+  AiQuickTask,
+  WorkspaceAiSource,
+  WorkspaceEntry,
+} from "../ai/types";
 import { useAiAssistant } from "../ai/use-ai-assistant";
 import { AiChat } from "./AiChat";
 import { AiSettings } from "./AiSettings";
@@ -11,31 +15,67 @@ type AiPanelView = "chat" | "graph" | "settings";
 
 interface AiPanelProps {
   activeDocumentName: string | null;
+  canWriteBack: boolean;
   getSource: () => WorkspaceAiSource;
   isVisible: boolean;
+  quickTask: AiQuickTask | null;
   workspaceName: string | null;
   workspaceRootPath: string | null;
   onClose: () => void;
+  onInsertIntoDocument: (text: string) => void;
   onOpenReference: (relativePath: string) => void;
+  onReplaceSelection: (text: string) => void;
 }
 
 export function AiPanel({
   activeDocumentName,
+  canWriteBack,
   getSource,
   isVisible,
+  quickTask,
   workspaceName,
   workspaceRootPath,
   onClose,
+  onInsertIntoDocument,
   onOpenReference,
+  onReplaceSelection,
 }: AiPanelProps) {
   const [view, setView] = useState<AiPanelView>("chat");
+  const [mentionState, setMentionState] = useState<{
+    rootPath: string | null;
+    entries: readonly WorkspaceEntry[];
+  }>({ rootPath: workspaceRootPath, entries: [] });
+  // 换工作区后旧的 `@` 范围立即失效，用派生状态避免额外一轮渲染。
+  const mentions =
+    mentionState.rootPath === workspaceRootPath ? mentionState.entries : [];
+  const setMentions = useCallback(
+    (entries: readonly WorkspaceEntry[]) => {
+      setMentionState({ rootPath: workspaceRootPath, entries });
+    },
+    [workspaceRootPath],
+  );
   const assistant = useAiAssistant({ getSource, workspaceRootPath });
+  const handledQuickTaskRef = useRef<number>(0);
+  const sendMessage = assistant.sendMessage;
   const autoBuiltWorkspaceRef = useRef<string | null>(null);
   const isConfigured = assistant.configuration?.isConfigured ?? false;
   const graph = assistant.graph;
   const graphError = assistant.graphError;
   const isBuildingGraph = assistant.isBuildingGraph;
   const generateGraph = assistant.generateGraph;
+
+  // 编辑器发来的快捷动作：切到对话视图，用选中片段和当前文件范围直接提问。
+  useEffect(() => {
+    if (!quickTask || handledQuickTaskRef.current === quickTask.id) {
+      return;
+    }
+    handledQuickTaskRef.current = quickTask.id;
+    setView("chat");
+    void sendMessage(quickTask.prompt, {
+      scopePaths: quickTask.scopePath ? [quickTask.scopePath] : [],
+      selection: quickTask.selection,
+    });
+  }, [quickTask, sendMessage]);
 
   useEffect(() => {
     if (
@@ -130,19 +170,30 @@ export function AiPanel({
         {view === "chat" ? (
           <AiChat
             activeDocumentName={activeDocumentName}
+            canWriteBack={canWriteBack}
             configuration={assistant.configuration}
             isSending={assistant.isSending}
             lastReceipt={assistant.lastReceipt}
+            mentions={mentions}
             messages={assistant.messages}
             onClear={assistant.clearMessages}
+            onInsertIntoDocument={onInsertIntoDocument}
+            onMentionsChange={setMentions}
             onOpenReference={onOpenReference}
+            onReplaceSelection={onReplaceSelection}
             onOpenSettings={() => {
               setView("settings");
             }}
             onRetry={assistant.retryAssistantMessage}
-            onSend={assistant.sendMessage}
+            onSend={(question) =>
+              sendMessage(question, {
+                scopePaths: mentions.map((mention) => mention.path),
+                selection: null,
+              })
+            }
             onStop={assistant.stopGeneration}
             workspaceName={workspaceName}
+            workspaceRootPath={workspaceRootPath}
           />
         ) : null}
         {view === "graph" ? (

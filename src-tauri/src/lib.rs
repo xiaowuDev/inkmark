@@ -22,6 +22,7 @@ pub fn run() {
             ai::chat_with_workspace,
             ai::delete_deepseek_api_key,
             ai::get_ai_configuration,
+            ai::list_workspace_entries,
             ai::save_deepseek_api_key,
             ai::test_deepseek_connection,
             filesystem::list_directory,

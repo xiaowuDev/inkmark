@@ -68,6 +68,28 @@ export interface WorkspaceAiSource {
   activeContent: string | null;
 }
 
+export interface WorkspaceEntry {
+  path: string;
+  name: string;
+  isDirectory: boolean;
+}
+
+/** 一次提问附带的上下文限定：`@` 圈定的范围与编辑器选中的片段。 */
+export interface AiRequestContext {
+  scopePaths: readonly string[];
+  selection: string | null;
+}
+
+/** 编辑器发起的快捷动作，`replaces` 表示结果可直接覆盖选中内容。 */
+export interface AiQuickTask {
+  id: number;
+  prompt: string;
+  label: string;
+  selection: string;
+  scopePath: string | null;
+  replaces: boolean;
+}
+
 export interface PositionedKnowledgeNode extends KnowledgeNode {
   x: number;
   y: number;
