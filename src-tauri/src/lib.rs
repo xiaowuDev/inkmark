@@ -42,6 +42,7 @@ pub fn run() {
             ai::list_workspace_entries,
             ai::save_deepseek_api_key,
             ai::test_deepseek_connection,
+            filesystem::create_document,
             filesystem::list_directory,
             filesystem::read_document,
             filesystem::write_document,

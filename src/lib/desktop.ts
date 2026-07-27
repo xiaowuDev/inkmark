@@ -69,6 +69,13 @@ export function listDirectory(path: string): Promise<DirectoryEntry[]> {
   return invoke<DirectoryEntry[]>("list_directory", { path });
 }
 
+export function createDocument(
+  directoryPath: string,
+  name: string,
+): Promise<DirectoryEntry> {
+  return invoke<DirectoryEntry>("create_document", { directoryPath, name });
+}
+
 export function readDocument(path: string): Promise<string> {
   return invoke<string>("read_document", { path });
 }
