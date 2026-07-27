@@ -1,15 +1,20 @@
+import type { Workspace } from "../domain";
 import { Icon } from "./Icon";
 
 interface WelcomeProps {
   onNewDocument: () => void;
   onOpenDocument: () => void;
+  onOpenRecentWorkspace: (workspace: Workspace) => void;
   onOpenWorkspace: () => void;
+  recentWorkspaces: readonly Workspace[];
 }
 
 export function Welcome({
   onNewDocument,
   onOpenDocument,
+  onOpenRecentWorkspace,
   onOpenWorkspace,
+  recentWorkspaces,
 }: WelcomeProps) {
   return (
     <section className="welcome">
@@ -43,6 +48,29 @@ export function Welcome({
       <button className="welcome-link" onClick={onOpenDocument} type="button">
         或打开单个 Markdown 文件
       </button>
+      {recentWorkspaces.length > 0 ? (
+        <div className="recent-workspaces">
+          <span className="eyebrow">最近的工作区</span>
+          <div>
+            {recentWorkspaces.map((workspace) => (
+              <button
+                key={workspace.rootPath}
+                onClick={() => {
+                  onOpenRecentWorkspace(workspace);
+                }}
+                title={workspace.rootPath}
+                type="button"
+              >
+                <Icon name="folder" />
+                <span>
+                  <strong>{workspace.rootName}</strong>
+                  <small>{workspace.rootPath}</small>
+                </span>
+              </button>
+            ))}
+          </div>
+        </div>
+      ) : null}
     </section>
   );
 }

@@ -255,6 +255,7 @@ function App() {
               controller.toggleSidebar();
             }
           }}
+          onCreateDocument={controller.createDocumentInDirectory}
           onOpenWorkspace={() => {
             void controller.openWorkspace();
           }}
@@ -312,9 +313,13 @@ function App() {
                 onOpenDocument={() => {
                   void controller.openDocument();
                 }}
+                onOpenRecentWorkspace={(workspace) => {
+                  void controller.openRecentWorkspace(workspace);
+                }}
                 onOpenWorkspace={() => {
                   void controller.openWorkspace();
                 }}
+                recentWorkspaces={controller.recentWorkspaces}
               />
             ) : activeTab.isLoading ? (
               <div className="loading-document">
@@ -409,6 +414,11 @@ function App() {
               }
             >
               {automaticUpdate.message}
+            </span>
+          ) : null}
+          {controller.workspaceErrorMessage ? (
+            <span className="error-state">
+              {controller.workspaceErrorMessage}
             </span>
           ) : null}
           {activeTab?.saveState === "saving" ? <span>正在保存…</span> : null}

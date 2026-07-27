@@ -1,4 +1,10 @@
-import { memo } from "react";
+import {
+  memo,
+  useEffect,
+  useState,
+  type MouseEvent,
+  type SyntheticEvent,
+} from "react";
 
 import type { DirectoryEntry, Workspace } from "../domain";
 import { Icon } from "./Icon";
@@ -12,7 +18,15 @@ interface FileSidebarProps {
   workspace: Workspace | null;
   onOpenWorkspace: () => void;
   onOpenDocument: (entry: DirectoryEntry) => void;
+  onCreateDocument: (directoryPath: string, name: string) => Promise<void>;
   onToggleDirectory: (entry: DirectoryEntry) => void;
+}
+
+interface CreateMenuState {
+  directoryPath: string;
+  mode: "menu" | "name";
+  x: number;
+  y: number;
 }
 
 interface DirectoryBranchProps {
@@ -23,7 +37,15 @@ interface DirectoryBranchProps {
   expandedPaths: ReadonlySet<string>;
   loadingPaths: ReadonlySet<string>;
   onOpenDocument: (entry: DirectoryEntry) => void;
+  onRequestCreate: (event: MouseEvent, directoryPath: string) => void;
   onToggleDirectory: (entry: DirectoryEntry) => void;
+}
+
+const CREATE_MENU_WIDTH = 210;
+const CREATE_MENU_HEIGHT = 150;
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
 }
 
 const DirectoryBranch = memo(function DirectoryBranch({
@@ -34,6 +56,7 @@ const DirectoryBranch = memo(function DirectoryBranch({
   expandedPaths,
   loadingPaths,
   onOpenDocument,
+  onRequestCreate,
   onToggleDirectory,
 }: DirectoryBranchProps) {
   const entries = entriesByDirectory[directoryPath] ?? [];
@@ -57,6 +80,14 @@ const DirectoryBranch = memo(function DirectoryBranch({
                 } else {
                   onOpenDocument(entry);
                 }
+              }}
+              onContextMenu={(event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                onRequestCreate(
+                  event,
+                  isDirectory ? entry.path : directoryPath,
+                );
               }}
               style={{ paddingInlineStart: 12 + depth * 16 }}
               title={entry.path}
@@ -95,6 +126,7 @@ const DirectoryBranch = memo(function DirectoryBranch({
                 expandedPaths={expandedPaths}
                 loadingPaths={loadingPaths}
                 onOpenDocument={onOpenDocument}
+                onRequestCreate={onRequestCreate}
                 onToggleDirectory={onToggleDirectory}
               />
             ) : null}
@@ -114,8 +146,71 @@ export const FileSidebar = memo(function FileSidebar({
   workspace,
   onOpenWorkspace,
   onOpenDocument,
+  onCreateDocument,
   onToggleDirectory,
 }: FileSidebarProps) {
+  const [createMenu, setCreateMenu] = useState<CreateMenuState | null>(null);
+  const [documentName, setDocumentName] = useState("");
+  const [createError, setCreateError] = useState<string | null>(null);
+  const [isCreating, setIsCreating] = useState(false);
+
+  useEffect(() => {
+    if (!createMenu) {
+      return;
+    }
+
+    const closeOnOutsidePointer = (event: PointerEvent) => {
+      const target = event.target;
+      if (target instanceof Element && target.closest(".file-create-popover")) {
+        return;
+      }
+      setCreateMenu(null);
+    };
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setCreateMenu(null);
+      }
+    };
+
+    window.addEventListener("pointerdown", closeOnOutsidePointer);
+    window.addEventListener("keydown", closeOnEscape);
+    return () => {
+      window.removeEventListener("pointerdown", closeOnOutsidePointer);
+      window.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [createMenu]);
+
+  const requestCreate = (event: MouseEvent, directoryPath: string) => {
+    const maxX = Math.max(8, window.innerWidth - CREATE_MENU_WIDTH - 8);
+    const maxY = Math.max(8, window.innerHeight - CREATE_MENU_HEIGHT - 8);
+    setDocumentName("");
+    setCreateError(null);
+    setCreateMenu({
+      directoryPath,
+      mode: "menu",
+      x: Math.min(event.clientX, maxX),
+      y: Math.min(event.clientY, maxY),
+    });
+  };
+
+  const submitCreate = async (event: SyntheticEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (createMenu?.mode !== "name" || isCreating) {
+      return;
+    }
+
+    setIsCreating(true);
+    setCreateError(null);
+    try {
+      await onCreateDocument(createMenu.directoryPath, documentName);
+      setCreateMenu(null);
+    } catch (error) {
+      setCreateError(errorMessage(error));
+    } finally {
+      setIsCreating(false);
+    }
+  };
+
   if (!isVisible) {
     return null;
   }
@@ -138,7 +233,16 @@ export const FileSidebar = memo(function FileSidebar({
         </button>
       </div>
 
-      <div className="file-tree" role="tree">
+      <div
+        className="file-tree"
+        onContextMenu={(event) => {
+          if (workspace) {
+            event.preventDefault();
+            requestCreate(event, workspace.rootPath);
+          }
+        }}
+        role="tree"
+      >
         {workspace ? (
           <DirectoryBranch
             activePath={activePath}
@@ -148,6 +252,7 @@ export const FileSidebar = memo(function FileSidebar({
             expandedPaths={expandedPaths}
             loadingPaths={loadingPaths}
             onOpenDocument={onOpenDocument}
+            onRequestCreate={requestCreate}
             onToggleDirectory={onToggleDirectory}
           />
         ) : (
@@ -164,6 +269,50 @@ export const FileSidebar = memo(function FileSidebar({
           </div>
         )}
       </div>
+
+      {createMenu ? (
+        <div
+          className="file-create-popover"
+          role={createMenu.mode === "menu" ? "menu" : "dialog"}
+          style={{ left: createMenu.x, top: createMenu.y }}
+        >
+          {createMenu.mode === "menu" ? (
+            <button
+              onClick={() => {
+                setCreateMenu((current) =>
+                  current ? { ...current, mode: "name" } : null,
+                );
+              }}
+              role="menuitem"
+              type="button"
+            >
+              <Icon name="new" />
+              新建文件
+            </button>
+          ) : (
+            <form onSubmit={(event) => void submitCreate(event)}>
+              <label htmlFor="new-workspace-document">文件名</label>
+              <input
+                autoFocus
+                disabled={isCreating}
+                id="new-workspace-document"
+                onChange={(event) => {
+                  setDocumentName(event.target.value);
+                  setCreateError(null);
+                }}
+                placeholder="例如：新文稿.md"
+                spellCheck={false}
+                value={documentName}
+              />
+              {createError ? (
+                <p className="file-create-error">{createError}</p>
+              ) : (
+                <p className="file-create-hint">回车创建，Esc 取消</p>
+              )}
+            </form>
+          )}
+        </div>
+      ) : null}
     </aside>
   );
 });

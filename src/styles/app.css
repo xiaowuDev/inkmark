@@ -388,6 +388,89 @@ body.is-resizing-pane .pane-resizer::after {
   animation: ink-spin 700ms linear infinite;
 }
 
+.file-create-popover {
+  position: fixed;
+  z-index: 80;
+  width: 210px;
+  padding: 6px;
+  border: 1px solid var(--divider);
+  border-radius: 10px;
+  background: var(--canvas-raised);
+  box-shadow: 0 14px 38px rgba(31, 35, 40, 0.18);
+}
+
+.file-create-popover > button {
+  display: flex;
+  width: 100%;
+  height: 32px;
+  align-items: center;
+  gap: 8px;
+  padding: 0 9px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  font-size: 12px;
+  text-align: left;
+  cursor: default;
+}
+
+.file-create-popover > button:hover,
+.file-create-popover > button:focus-visible {
+  background: var(--selection);
+}
+
+.file-create-popover > button svg {
+  width: 15px;
+  height: 15px;
+  color: var(--ink-muted);
+}
+
+.file-create-popover form {
+  display: grid;
+  gap: 6px;
+  padding: 4px;
+}
+
+.file-create-popover label {
+  color: var(--ink-muted);
+  font-size: 10px;
+  font-weight: 650;
+}
+
+.file-create-popover input {
+  width: 100%;
+  height: 31px;
+  padding: 0 9px;
+  border: 1px solid var(--divider-strong);
+  border-radius: 7px;
+  outline: 0;
+  color: var(--ink);
+  background: var(--canvas);
+  font: inherit;
+  font-size: 12px;
+}
+
+.file-create-popover input:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 18%, transparent);
+}
+
+.file-create-hint,
+.file-create-error {
+  min-height: 14px;
+  margin: 0;
+  font-size: 9px;
+  line-height: 1.4;
+}
+
+.file-create-hint {
+  color: var(--ink-faint);
+}
+
+.file-create-error {
+  color: #b6534b;
+}
+
 .sidebar-empty {
   display: grid;
   max-width: 190px;
@@ -634,6 +717,70 @@ body.is-resizing-pane .pane-resizer::after {
 
 .welcome-link {
   margin-top: 14px;
+}
+
+.recent-workspaces {
+  display: grid;
+  width: min(480px, calc(100vw - 64px));
+  gap: 8px;
+  margin-top: 28px;
+  text-align: left;
+}
+
+.recent-workspaces > div {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.recent-workspaces button {
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr);
+  min-width: 0;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border: 1px solid var(--divider);
+  border-radius: 9px;
+  color: var(--ink-muted);
+  background: var(--canvas-raised);
+  text-align: left;
+  cursor: pointer;
+}
+
+.recent-workspaces button:hover {
+  color: var(--ink);
+  border-color: var(--divider-strong);
+  background: color-mix(in srgb, var(--selection) 45%, var(--canvas-raised));
+}
+
+.recent-workspaces button > svg {
+  width: 16px;
+  height: 16px;
+  color: var(--accent);
+}
+
+.recent-workspaces button > span {
+  display: grid;
+  min-width: 0;
+  gap: 1px;
+}
+
+.recent-workspaces strong,
+.recent-workspaces small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.recent-workspaces strong {
+  color: inherit;
+  font-size: 11px;
+}
+
+.recent-workspaces small {
+  color: var(--ink-faint);
+  font-size: 9px;
 }
 
 .loading-document,
@@ -2649,6 +2796,14 @@ body.is-exporting-pdf .print-document {
   .selection-actions button {
     padding: 8px 12px;
     font-size: 13px;
+  }
+
+  .recent-workspaces {
+    width: calc(100vw - 36px);
+  }
+
+  .recent-workspaces > div {
+    grid-template-columns: minmax(0, 1fr);
   }
 
   .ai-composer textarea,

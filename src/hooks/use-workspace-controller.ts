@@ -17,6 +17,7 @@ import {
   chooseDocument,
   chooseSavePath,
   chooseWorkspaceDirectory,
+  createDocument as createDocumentFile,
   listDirectory,
   readDocument,
   writeDocument,
@@ -28,6 +29,11 @@ import {
   nextUntitledName,
   selectTabAfterClose,
 } from "../lib/document-utils";
+import {
+  addRecentWorkspace,
+  loadRecentWorkspaces,
+  persistRecentWorkspaces,
+} from "../lib/recent-workspaces";
 
 const AUTOSAVE_DELAY_MS = 700;
 const STATS_DELAY_MS = 140;
@@ -75,6 +81,11 @@ export function useWorkspaceController() {
     useState<DocumentStats>(EMPTY_STATS);
   const [activeDocumentValue, setActiveDocumentValue] = useState("");
   const [isSidebarVisible, setIsSidebarVisible] = useState(true);
+  const [recentWorkspaces, setRecentWorkspaces] =
+    useState<Workspace[]>(loadRecentWorkspaces);
+  const [workspaceErrorMessage, setWorkspaceErrorMessage] = useState<
+    string | null
+  >(null);
 
   const draftsRef = useRef(new Map<string, string>());
   const dirtyTabsRef = useRef(new Set<string>());
@@ -197,6 +208,11 @@ export function useWorkspaceController() {
         ...current,
         [path]: entries,
       }));
+      setWorkspaceErrorMessage(null);
+      return entries;
+    } catch (error) {
+      setWorkspaceErrorMessage(errorMessage(error));
+      return null;
     } finally {
       setLoadingPaths((current) => {
         const next = new Set(current);
@@ -206,6 +222,30 @@ export function useWorkspaceController() {
     }
   }, []);
 
+  const rememberWorkspace = useCallback((nextWorkspace: Workspace) => {
+    setRecentWorkspaces((current) => {
+      const next = addRecentWorkspace(current, nextWorkspace);
+      persistRecentWorkspaces(next);
+      return next;
+    });
+  }, []);
+
+  const activateWorkspace = useCallback(
+    async (nextWorkspace: Workspace) => {
+      const rootEntries = await loadDirectory(nextWorkspace.rootPath);
+      if (!rootEntries) {
+        return false;
+      }
+
+      setWorkspace(nextWorkspace);
+      setEntriesByDirectory({ [nextWorkspace.rootPath]: rootEntries });
+      setExpandedPaths(new Set());
+      rememberWorkspace(nextWorkspace);
+      return true;
+    },
+    [loadDirectory, rememberWorkspace],
+  );
+
   const openWorkspace = useCallback(async () => {
     const picked = await chooseWorkspaceDirectory();
     if (!picked) {
@@ -213,15 +253,18 @@ export function useWorkspaceController() {
     }
 
     const { rootPath } = picked;
-    const nextWorkspace = {
+    await activateWorkspace({
       rootPath,
       rootName: picked.rootName ?? directoryNameFromPath(rootPath),
-    };
-    setWorkspace(nextWorkspace);
-    setEntriesByDirectory({});
-    setExpandedPaths(new Set());
-    await loadDirectory(rootPath);
-  }, [loadDirectory]);
+    });
+  }, [activateWorkspace]);
+
+  const openRecentWorkspace = useCallback(
+    async (recentWorkspace: Workspace) => {
+      await activateWorkspace(recentWorkspace);
+    },
+    [activateWorkspace],
+  );
 
   const openPath = useCallback(
     async (path: string, name = fileNameFromPath(path)) => {
@@ -271,6 +314,18 @@ export function useWorkspaceController() {
     setActiveDocumentValue("");
     setDocumentStats(EMPTY_STATS);
   }, []);
+
+  const createDocumentInDirectory = useCallback(
+    async (directoryPath: string, name: string) => {
+      const entry = await createDocumentFile(directoryPath, name);
+      await loadDirectory(directoryPath);
+      if (directoryPath !== workspaceRef.current?.rootPath) {
+        setExpandedPaths((current) => new Set(current).add(directoryPath));
+      }
+      await openPath(entry.path, entry.name);
+    },
+    [loadDirectory, openPath],
+  );
 
   const activateTab = useCallback(
     (tabId: string) => {
@@ -463,6 +518,7 @@ export function useWorkspaceController() {
     activateTab,
     closeTab,
     createDocument,
+    createDocumentInDirectory,
     documentStats,
     entriesByDirectory,
     expandedPaths,
@@ -472,11 +528,14 @@ export function useWorkspaceController() {
     loadingPaths,
     openDocument,
     openPath,
+    openRecentWorkspace,
     openWorkspace,
+    recentWorkspaces,
     saveActiveDocument,
     tabs,
     toggleDirectory,
     toggleSidebar,
     workspace,
+    workspaceErrorMessage,
   };
 }

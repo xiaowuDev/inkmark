@@ -1,7 +1,7 @@
 use serde::Serialize;
 use std::{
     fs,
-    io::Write,
+    io::{self, Write},
     path::Path,
     time::{SystemTime, UNIX_EPOCH},
 };
@@ -90,6 +90,65 @@ fn ensure_markdown_document(path: &Path) -> Result<(), String> {
             path.display()
         ))
     }
+}
+
+fn normalize_document_name(name: &str) -> Result<String, String> {
+    let trimmed = name.trim();
+    if trimmed.is_empty() {
+        return Err("请输入文件名。".to_string());
+    }
+    if trimmed.contains('/') || trimmed.contains('\\') {
+        return Err("文件名不能包含路径分隔符。".to_string());
+    }
+    if trimmed == "." || trimmed == ".." || trimmed.starts_with('.') {
+        return Err("文件名不能是隐藏文件或相对路径。".to_string());
+    }
+
+    let normalized = if Path::new(trimmed).extension().is_none() {
+        format!("{trimmed}.md")
+    } else {
+        trimmed.to_string()
+    };
+    ensure_markdown_document(Path::new(&normalized))?;
+    Ok(normalized)
+}
+
+fn create_document_in_directory(
+    directory_path: &Path,
+    requested_name: &str,
+) -> Result<DirectoryEntry, String> {
+    if !directory_path.is_dir() {
+        return Err(format!("目录不存在：{}", directory_path.display()));
+    }
+
+    let name = normalize_document_name(requested_name)?;
+    let path = directory_path.join(&name);
+    let mut file = fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(&path)
+        .map_err(|error| {
+            if error.kind() == io::ErrorKind::AlreadyExists {
+                format!("文件已存在：{name}")
+            } else {
+                user_facing_error("创建文稿", &path, error)
+            }
+        })?;
+    file.flush()
+        .and_then(|()| file.sync_all())
+        .map_err(|error| user_facing_error("创建文稿", &path, error))?;
+
+    let metadata = file.metadata().ok();
+    Ok(DirectoryEntry {
+        name,
+        path: path.to_string_lossy().into_owned(),
+        kind: EntryKind::Document,
+        modified_at_ms: metadata
+            .as_ref()
+            .and_then(|value| value.modified().ok())
+            .and_then(system_time_ms),
+        size_bytes: metadata.as_ref().map(fs::Metadata::len),
+    })
 }
 
 fn read_directory_entries(path: &Path) -> Result<Vec<DirectoryEntry>, String> {
@@ -210,6 +269,24 @@ pub async fn list_directory(path: String) -> Result<Vec<DirectoryEntry>, String>
 
 #[cfg(not(target_os = "android"))]
 #[tauri::command]
+pub async fn create_document(
+    directory_path: String,
+    name: String,
+) -> Result<DirectoryEntry, String> {
+    create_document_in_directory(Path::new(&directory_path), &name)
+}
+
+#[cfg(target_os = "android")]
+#[tauri::command]
+pub async fn create_document(
+    _directory_path: String,
+    _name: String,
+) -> Result<DirectoryEntry, String> {
+    Err("Android 暂不支持通过右键菜单新建文稿。".to_string())
+}
+
+#[cfg(not(target_os = "android"))]
+#[tauri::command]
 pub async fn read_document(path: String) -> Result<String, String> {
     read_document_contents(Path::new(&path))
 }
@@ -281,6 +358,31 @@ mod tests {
 
         assert_eq!(contents, "# 已更新\nInkMark");
         assert_eq!(receipt.bytes_written, "# 你好\nInkMark".len());
+    }
+
+    #[test]
+    fn creates_a_markdown_document_without_overwriting_existing_files() {
+        let directory = tempfile::tempdir().expect("temp directory");
+
+        let entry =
+            create_document_in_directory(directory.path(), "新文稿").expect("create document");
+        let error = create_document_in_directory(directory.path(), "新文稿.md")
+            .expect_err("reject duplicate");
+
+        assert_eq!(entry.name, "新文稿.md");
+        assert!(directory.path().join("新文稿.md").is_file());
+        assert!(error.contains("文件已存在"));
+    }
+
+    #[test]
+    fn rejects_document_names_that_escape_the_target_directory() {
+        let directory = tempfile::tempdir().expect("temp directory");
+
+        let error = create_document_in_directory(directory.path(), "../outside.md")
+            .expect_err("reject path");
+
+        assert!(error.contains("路径分隔符"));
+        assert!(!directory.path().join("../outside.md").exists());
     }
 
     #[test]
